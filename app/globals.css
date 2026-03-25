@@ -1,0 +1,354 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   MEDET Healthcare Design System
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+@theme inline {
+  /* --- Shadcn Base Tokens --- */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-medet-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* --- MEDET Healthcare Colors --- */
+  --color-medet-primary: var(--medet-primary);
+  --color-medet-primary-light: var(--medet-primary-light);
+  --color-medet-primary-dark: var(--medet-primary-dark);
+  --color-medet-secondary: var(--medet-secondary);
+  --color-medet-secondary-light: var(--medet-secondary-light);
+  --color-medet-accent: var(--medet-accent);
+  --color-medet-accent-light: var(--medet-accent-light);
+  --color-medet-emergency: var(--medet-emergency);
+  --color-medet-emergency-light: var(--medet-emergency-light);
+  --color-medet-warm: var(--medet-warm);
+  --color-medet-warm-light: var(--medet-warm-light);
+  --color-medet-surface: var(--medet-surface);
+  --color-medet-surface-hover: var(--medet-surface-hover);
+  --color-medet-text: var(--medet-text);
+  --color-medet-text-secondary: var(--medet-text-secondary);
+  --color-medet-bg: var(--medet-bg);
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Light Mode Variables
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+:root {
+  --font-medet-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Shadcn tokens */
+  --background: oklch(0.985 0.002 240);
+  --foreground: oklch(0.20 0.02 250);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.20 0.02 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.20 0.02 250);
+  --primary: oklch(0.55 0.18 250);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.01 240);
+  --secondary-foreground: oklch(0.25 0.02 250);
+  --muted: oklch(0.95 0.01 240);
+  --muted-foreground: oklch(0.50 0.02 250);
+  --accent: oklch(0.93 0.02 240);
+  --accent-foreground: oklch(0.25 0.02 250);
+  --destructive: oklch(0.58 0.22 25);
+  --border: oklch(0.90 0.01 240);
+  --input: oklch(0.90 0.01 240);
+  --ring: oklch(0.55 0.18 250);
+  --chart-1: oklch(0.55 0.18 250);
+  --chart-2: oklch(0.65 0.17 160);
+  --chart-3: oklch(0.60 0.16 300);
+  --chart-4: oklch(0.72 0.17 55);
+  --chart-5: oklch(0.58 0.22 25);
+  --radius: 0.75rem;
+
+  /* Sidebar */
+  --sidebar: oklch(0.98 0.005 240);
+  --sidebar-foreground: oklch(0.20 0.02 250);
+  --sidebar-primary: oklch(0.55 0.18 250);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.93 0.02 240);
+  --sidebar-accent-foreground: oklch(0.25 0.02 250);
+  --sidebar-border: oklch(0.90 0.01 240);
+  --sidebar-ring: oklch(0.55 0.18 250);
+
+  /* ─── MEDET Healthcare Palette ─── */
+  /* Primary: Trustworthy Blue */
+  --medet-primary: #2563EB;
+  --medet-primary-light: #DBEAFE;
+  --medet-primary-dark: #1D4ED8;
+
+  /* Secondary: Healing Green */
+  --medet-secondary: #059669;
+  --medet-secondary-light: #D1FAE5;
+
+  /* Accent: AI Purple */
+  --medet-accent: #7C3AED;
+  --medet-accent-light: #EDE9FE;
+
+  /* Emergency: Alert Red */
+  --medet-emergency: #DC2626;
+  --medet-emergency-light: #FEE2E2;
+
+  /* Warm: Friendly Amber */
+  --medet-warm: #D97706;
+  --medet-warm-light: #FEF3C7;
+
+  /* Surfaces */
+  --medet-surface: #FFFFFF;
+  --medet-surface-hover: #F8FAFC;
+  --medet-text: #1E293B;
+  --medet-text-secondary: #64748B;
+  --medet-bg: #F1F5F9;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Dark Mode Variables
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.dark {
+  --background: oklch(0.16 0.01 250);
+  --foreground: oklch(0.96 0.005 240);
+  --card: oklch(0.20 0.015 250);
+  --card-foreground: oklch(0.96 0.005 240);
+  --popover: oklch(0.20 0.015 250);
+  --popover-foreground: oklch(0.96 0.005 240);
+  --primary: oklch(0.65 0.18 250);
+  --primary-foreground: oklch(0.15 0.01 250);
+  --secondary: oklch(0.25 0.015 250);
+  --secondary-foreground: oklch(0.96 0.005 240);
+  --muted: oklch(0.25 0.015 250);
+  --muted-foreground: oklch(0.65 0.015 240);
+  --accent: oklch(0.25 0.015 250);
+  --accent-foreground: oklch(0.96 0.005 240);
+  --destructive: oklch(0.65 0.20 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.65 0.18 250);
+  --chart-1: oklch(0.65 0.18 250);
+  --chart-2: oklch(0.65 0.17 160);
+  --chart-3: oklch(0.65 0.16 300);
+  --chart-4: oklch(0.72 0.17 55);
+  --chart-5: oklch(0.65 0.20 25);
+
+  --sidebar: oklch(0.18 0.012 250);
+  --sidebar-foreground: oklch(0.96 0.005 240);
+  --sidebar-primary: oklch(0.65 0.18 250);
+  --sidebar-primary-foreground: oklch(0.15 0.01 250);
+  --sidebar-accent: oklch(0.25 0.015 250);
+  --sidebar-accent-foreground: oklch(0.96 0.005 240);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.65 0.18 250);
+
+  /* MEDET Dark Overrides */
+  --medet-primary: #3B82F6;
+  --medet-primary-light: #1E3A5F;
+  --medet-primary-dark: #60A5FA;
+  --medet-secondary: #10B981;
+  --medet-secondary-light: #064E3B;
+  --medet-accent: #8B5CF6;
+  --medet-accent-light: #2E1065;
+  --medet-emergency: #EF4444;
+  --medet-emergency-light: #450A0A;
+  --medet-warm: #F59E0B;
+  --medet-warm-light: #451A03;
+  --medet-surface: oklch(0.20 0.015 250);
+  --medet-surface-hover: oklch(0.24 0.015 250);
+  --medet-text: #F1F5F9;
+  --medet-text-secondary: #94A3B8;
+  --medet-bg: oklch(0.14 0.01 250);
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Base Styles
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans scroll-smooth;
+    font-family: var(--font-medet-sans);
+  }
+
+  /* Mobile-first typography */
+  html {
+    font-size: 16px;
+  }
+  @media (min-width: 768px) {
+    html {
+      font-size: 17px;
+    }
+  }
+
+  /* Better focus styles for accessibility */
+  :focus-visible {
+    @apply ring-2 ring-primary ring-offset-2 ring-offset-background outline-none;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   MEDET Utility Classes
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@layer utilities {
+  /* Gradient backgrounds */
+  .medet-gradient-primary {
+    background: linear-gradient(135deg, #2563EB 0%, #3B82F6 50%, #60A5FA 100%);
+  }
+  .medet-gradient-hero {
+    background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 30%, #E0E7FF 70%, #F5F3FF 100%);
+  }
+  .medet-gradient-warm {
+    background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 50%, #FCD34D 100%);
+  }
+  .medet-gradient-emergency {
+    background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 50%, #FCA5A5 100%);
+  }
+  .medet-gradient-health {
+    background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 50%, #6EE7B7 100%);
+  }
+
+  /* Glass effect for cards */
+  .medet-glass {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  .dark .medet-glass {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Soft shadows */
+  .medet-shadow-sm {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  .medet-shadow {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  }
+  .medet-shadow-lg {
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  }
+  .medet-shadow-glow {
+    box-shadow: 0 0 20px rgba(37, 99, 235, 0.15), 0 0 40px rgba(37, 99, 235, 0.05);
+  }
+
+  /* Smooth scrollbar */
+  .medet-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .medet-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .medet-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 999px;
+  }
+
+  /* Animation utilities */
+  .medet-animate-float {
+    animation: medetFloat 6s ease-in-out infinite;
+  }
+  .medet-animate-pulse-soft {
+    animation: medetPulseSoft 2s ease-in-out infinite;
+  }
+  .medet-animate-fade-up {
+    animation: medetFadeUp 0.5s ease-out forwards;
+  }
+
+  /* Tap target (minimum 44px for accessibility) */
+  .medet-tap-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Keyframe Animations
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@keyframes medetFloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes medetPulseSoft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+@keyframes medetFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes medetListening {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 12px rgba(37, 99, 235, 0); }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Emergency Styles
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.medet-emergency-card {
+  border-left: 4px solid var(--medet-emergency);
+  background: var(--medet-emergency-light);
+}
+
+.medet-emergency-pulse {
+  animation: emergencyPulse 2s ease-in-out infinite;
+}
+
+@keyframes emergencyPulse {
+  0%, 100% { border-color: var(--medet-emergency); }
+  50% { border-color: transparent; }
+}
