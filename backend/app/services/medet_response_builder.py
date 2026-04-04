@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.schemas.medet_response import MedetResponse
+from backend.app.schemas.medet_response import MedetResponse, normalize_sources
 from backend.app.services.emergency_detector import detect_emergency
 
 
@@ -24,6 +24,7 @@ def build_medet_response(
     user_message: str | None = None,
     sources: list[dict[str, Any] | str] | None = None,
     suggest_doctor: bool | None = None,
+    conversation_id: str | None = None,
 ) -> MedetResponse:
     """
     Attach healthcare metadata to a Medet answer.
@@ -53,7 +54,8 @@ def build_medet_response(
         severity=str(detection["severity"]),
         reason=detection["reason"] if isinstance(detection["reason"], str) else None,
         suggest_doctor=should_suggest_doctor,
-        sources=sources or [],
+        sources=normalize_sources(sources),
+        **({"conversation_id": conversation_id} if conversation_id else {}),
     )
 
 
