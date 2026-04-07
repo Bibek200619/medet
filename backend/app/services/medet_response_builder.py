@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.schemas.medet_response import MedetResponse, normalize_sources
+from backend.app.schemas.medet_response import (
+    DEFAULT_INPUT_TYPE,
+    DEFAULT_LANGUAGE,
+    MedetResponse,
+    normalize_sources,
+)
 from backend.app.services.emergency_detector import detect_emergency
+from backend.app.services.voice_support import build_voice_metadata
 
 
 EMERGENCY_ESCALATION_TEXT = (
@@ -25,6 +31,8 @@ def build_medet_response(
     sources: list[dict[str, Any] | str] | None = None,
     suggest_doctor: bool | None = None,
     conversation_id: str | None = None,
+    input_type: str = DEFAULT_INPUT_TYPE,
+    language: str = DEFAULT_LANGUAGE,
 ) -> MedetResponse:
     """
     Attach healthcare metadata to a Medet answer.
@@ -50,11 +58,19 @@ def build_medet_response(
 
     return MedetResponse(
         response=final_text,
+        input_type=input_type,
+        language=language,
         emergency=emergency,
         severity=str(detection["severity"]),
         reason=detection["reason"] if isinstance(detection["reason"], str) else None,
         suggest_doctor=should_suggest_doctor,
         sources=normalize_sources(sources),
+        voice=build_voice_metadata(
+            input_type=input_type,
+            language=language,
+            transcript=user_message,
+            response_text=final_text,
+        ),
         **({"conversation_id": conversation_id} if conversation_id else {}),
     )
 

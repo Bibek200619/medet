@@ -22,6 +22,8 @@ def test_chat_returns_frontend_contract_with_conversation_id() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["conversation_id"] == "demo-123"
+    assert payload["input_type"] == "text"
+    assert payload["language"] == "en"
     assert payload["emergency"] is True
     assert payload["severity"] == "high"
     assert payload["suggest_doctor"] is True
@@ -30,7 +32,12 @@ def test_chat_returns_frontend_contract_with_conversation_id() -> None:
 
 
 def test_chat_returns_normalized_tavily_sources(monkeypatch) -> None:
-    async def fake_generate(message: str, language: str, conversation_id: str):
+    async def fake_generate(
+        message: str,
+        input_type: str,
+        language: str,
+        conversation_id: str,
+    ):
         return (
             "Drink clean water and rest.",
             [
@@ -58,6 +65,35 @@ def test_chat_returns_normalized_tavily_sources(monkeypatch) -> None:
             "source_type": "tavily",
         }
     ]
+
+
+def test_chat_accepts_voice_transcript_contract() -> None:
+    response = client.post(
+        "/medet/chat",
+        json={
+            "message": "Mujhe saans lene mein dikkat ho rahi hai",
+            "input_type": "voice",
+            "language": "hi",
+            "conversation_id": "voice-123",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["conversation_id"] == "voice-123"
+    assert payload["input_type"] == "voice"
+    assert payload["language"] == "hi"
+    assert payload["emergency"] is True
+    assert payload["voice"] == {
+        "interaction_mode": "voice_first",
+        "speech_to_text_status": "transcript_provided",
+        "transcript": "Mujhe saans lene mein dikkat ho rahi hai",
+        "transcript_language": "hi",
+        "voice_locale": "hi-IN",
+        "tts_text": payload["response"],
+        "audio_status": "not_generated",
+        "audio_url": None,
+    }
 
 
 def test_chat_rejects_empty_message_with_safe_error() -> None:
@@ -112,6 +148,17 @@ def test_chat_rejects_unsupported_language() -> None:
     assert response.json()["error"]["field"] == "language"
 
 
+def test_chat_rejects_unsupported_input_type() -> None:
+    response = client.post(
+        "/medet/chat",
+        json={"message": "hello", "input_type": "image", "language": "en"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert response.json()["error"]["field"] == "input_type"
+
+
 def test_stream_returns_tokens_and_final_metadata() -> None:
     with client.stream(
         "POST",
@@ -133,5 +180,7 @@ def test_stream_returns_tokens_and_final_metadata() -> None:
     ][0]
     metadata = json.loads(metadata_line.removeprefix("data: "))
     assert metadata["conversation_id"] == "stream-123"
+    assert metadata["input_type"] == "text"
+    assert metadata["language"] == "en"
     assert metadata["emergency"] is True
     assert metadata["reason"] == "Possible breathing difficulty detected"
