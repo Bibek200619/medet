@@ -96,6 +96,23 @@ def test_chat_accepts_voice_transcript_contract() -> None:
     }
 
 
+def test_chat_preserves_requested_response_language() -> None:
+    response = client.post(
+        "/medet/chat",
+        json={
+            "message": "আমার জ্বর আছে",
+            "language": "bn",
+            "conversation_id": "bn-123",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["conversation_id"] == "bn-123"
+    assert payload["language"] == "bn"
+    assert "আমি বুঝতে পারছি" in payload["response"]
+
+
 def test_chat_rejects_empty_message_with_safe_error() -> None:
     response = client.post(
         "/medet/chat",

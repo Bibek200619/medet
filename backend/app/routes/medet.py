@@ -15,7 +15,10 @@ from backend.app.schemas.medet_response import (
     MedetResponse,
     normalize_sources,
 )
-from backend.app.services.language_support import get_language_profile
+from backend.app.services.language_support import (
+    build_multilingual_prompt_context,
+    get_followup_text,
+)
 from backend.app.services.medet_response_builder import build_medet_response
 
 router = APIRouter(prefix="/medet", tags=["medet"])
@@ -187,14 +190,16 @@ async def _generate_ai_response(
     return `(answer_text, sources)`.
     """
     del conversation_id
-    del input_type
-    language_profile = get_language_profile(language)
-    del language_profile
-    return (
-        "I understand. Please share how long this has been happening, the age of "
-        "the person, and whether there is fever, pain, bleeding, or weakness.",
-        [],
+    prompt_context = build_multilingual_prompt_context(
+        message=message,
+        language=language,
+        input_type=input_type,
     )
+
+    # Existing Omnix/Ollama integration should pass `prompt_context.system_instruction`
+    # with `prompt_context.user_message` and keep returning `(answer_text, sources)`.
+    del prompt_context
+    return (get_followup_text(language), [])
 
 
 async def _stream_ai_response(

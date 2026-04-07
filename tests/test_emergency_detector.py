@@ -40,3 +40,38 @@ def test_simple_negation_does_not_trigger() -> None:
     result = detect_emergency("There is no chest pain, only mild acidity")
 
     assert result["emergency"] is False
+
+
+def test_detects_hindi_breathing_difficulty() -> None:
+    result = detect_emergency("मुझे सांस लेने में दिक्कत हो रही है")
+
+    assert result["emergency"] is True
+    assert result["reason"] == "Possible breathing difficulty detected"
+
+
+def test_detects_bengali_severe_bleeding() -> None:
+    result = detect_emergency("রক্ত বন্ধ হচ্ছে না")
+
+    assert result["emergency"] is True
+    assert result["reason"] == "Possible severe bleeding detected"
+
+
+def test_detects_nepali_chest_pain() -> None:
+    result = detect_emergency("छाती दुखेको छ")
+
+    assert result["emergency"] is True
+    assert result["reason"] == "Possible chest pain or heart attack symptoms detected"
+
+
+def test_detects_tamil_stroke_symptoms() -> None:
+    result = detect_emergency("ஒரு பக்கம் பலவீனம் உள்ளது")
+
+    assert result["emergency"] is True
+    assert result["reason"] == "Possible stroke symptoms detected"
+
+
+def test_detects_kannada_severe_burn() -> None:
+    result = detect_emergency("ತೀವ್ರ ಸುಟ್ಟ ಗಾಯವಾಗಿದೆ")
+
+    assert result["emergency"] is True
+    assert result["reason"] == "Possible severe burn detected"

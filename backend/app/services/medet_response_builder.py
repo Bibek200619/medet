@@ -9,20 +9,11 @@ from backend.app.schemas.medet_response import (
     normalize_sources,
 )
 from backend.app.services.emergency_detector import detect_emergency
+from backend.app.services.language_support import (
+    get_doctor_suggestion_text,
+    get_emergency_escalation_text,
+)
 from backend.app.services.voice_support import build_voice_metadata
-
-
-EMERGENCY_ESCALATION_TEXT = (
-    "This may be serious. Please seek medical help immediately. "
-    "Contact a nearby health worker, clinic, ambulance, or emergency service now. "
-    "I cannot diagnose this, but these symptoms need urgent attention."
-)
-
-
-DOCTOR_SUGGESTION_TEXT = (
-    "Please try to speak with a doctor or trained health worker, especially if this "
-    "is getting worse, lasting long, or happening to a child, pregnant person, or elder."
-)
 
 
 def build_medet_response(
@@ -45,7 +36,7 @@ def build_medet_response(
     detection = user_detection if user_detection["emergency"] else answer_detection
 
     emergency = bool(detection["emergency"])
-    final_text = _with_escalation(ai_text, emergency)
+    final_text = _with_escalation(ai_text, emergency, language)
 
     should_suggest_doctor = (
         emergency
@@ -54,7 +45,7 @@ def build_medet_response(
     )
 
     if should_suggest_doctor and not emergency:
-        final_text = _append_once(final_text, DOCTOR_SUGGESTION_TEXT)
+        final_text = _append_once(final_text, get_doctor_suggestion_text(language))
 
     return MedetResponse(
         response=final_text,
@@ -75,10 +66,10 @@ def build_medet_response(
     )
 
 
-def _with_escalation(text: str, emergency: bool) -> str:
+def _with_escalation(text: str, emergency: bool, language: str) -> str:
     if not emergency:
         return text.strip()
-    return _append_once(text.strip(), EMERGENCY_ESCALATION_TEXT)
+    return _append_once(text.strip(), get_emergency_escalation_text(language))
 
 
 def _append_once(text: str, addition: str) -> str:
