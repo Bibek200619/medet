@@ -37,6 +37,8 @@ class MedetResponse(BaseModel):
     emergency: bool = False
     severity: str = "low"
     reason: str | None = None
+    medical_warning: bool = False
+    trust_level: str = "safe"
     suggest_doctor: bool = False
     sources: list[MedetSource] = Field(default_factory=list)
     conversation_id: str = Field(default_factory=lambda: str(uuid4()))

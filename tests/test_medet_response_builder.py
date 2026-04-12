@@ -29,6 +29,8 @@ def test_regular_response_keeps_schema_low_risk() -> None:
         "emergency": False,
         "severity": "low",
         "reason": None,
+        "medical_warning": False,
+        "trust_level": "safe",
         "suggest_doctor": False,
         "sources": [],
         "conversation_id": "test-conversation",
@@ -55,3 +57,32 @@ def test_voice_response_includes_voice_metadata() -> None:
     assert result.voice.audio_status == "not_generated"
     assert result.voice.audio_url is None
     assert result.voice.tts_text == result.response
+
+
+def test_unsafe_ai_response_is_guarded() -> None:
+    result = build_medet_response(
+        ai_text="You definitely have an infection. Take antibiotic 500mg twice daily.",
+        user_message="I have fever",
+        conversation_id="safety-conversation",
+    )
+
+    assert result.medical_warning is True
+    assert result.trust_level == "guarded"
+    assert result.suggest_doctor is True
+    assert "definitely have" not in result.response.lower()
+    assert "500mg" not in result.response.lower()
+    assert "cannot diagnose" in result.response.lower()
+
+
+def test_emergency_response_keeps_safe_trust_metadata() -> None:
+    result = build_medet_response(
+        ai_text="Please stay calm and sit upright.",
+        user_message="I have chest pain and cannot breathe",
+        conversation_id="emergency-conversation",
+    )
+
+    assert result.emergency is True
+    assert result.medical_warning is False
+    assert result.trust_level == "safe"
+    assert result.suggest_doctor is True
+    assert "medical help immediately" in result.response

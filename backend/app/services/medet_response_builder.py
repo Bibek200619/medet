@@ -9,10 +9,8 @@ from backend.app.schemas.medet_response import (
     normalize_sources,
 )
 from backend.app.services.emergency_detector import detect_emergency
-from backend.app.services.language_support import (
-    get_doctor_suggestion_text,
-    get_emergency_escalation_text,
-)
+from backend.app.services.language_support import get_doctor_suggestion_text
+from backend.app.services.medical_safety_guard import guard_medical_response
 from backend.app.services.voice_support import build_voice_metadata
 
 
@@ -36,15 +34,21 @@ def build_medet_response(
     detection = user_detection if user_detection["emergency"] else answer_detection
 
     emergency = bool(detection["emergency"])
-    final_text = _with_escalation(ai_text, emergency, language)
+    safety = guard_medical_response(
+        ai_text,
+        user_message=user_message,
+        emergency=emergency,
+        language=language,
+    )
+    final_text = safety.response
 
     should_suggest_doctor = (
-        emergency
+        emergency or safety.suggest_doctor
         if suggest_doctor is None
-        else bool(suggest_doctor or emergency)
+        else bool(suggest_doctor or emergency or safety.suggest_doctor)
     )
 
-    if should_suggest_doctor and not emergency:
+    if suggest_doctor and not emergency:
         final_text = _append_once(final_text, get_doctor_suggestion_text(language))
 
     return MedetResponse(
@@ -54,6 +58,8 @@ def build_medet_response(
         emergency=emergency,
         severity=str(detection["severity"]),
         reason=detection["reason"] if isinstance(detection["reason"], str) else None,
+        medical_warning=safety.medical_warning,
+        trust_level=safety.trust_level,
         suggest_doctor=should_suggest_doctor,
         sources=normalize_sources(sources),
         voice=build_voice_metadata(
@@ -64,12 +70,6 @@ def build_medet_response(
         ),
         **({"conversation_id": conversation_id} if conversation_id else {}),
     )
-
-
-def _with_escalation(text: str, emergency: bool, language: str) -> str:
-    if not emergency:
-        return text.strip()
-    return _append_once(text.strip(), get_emergency_escalation_text(language))
 
 
 def _append_once(text: str, addition: str) -> str:
