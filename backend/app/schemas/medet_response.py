@@ -10,6 +10,16 @@ SUPPORTED_LANGUAGES = {"en", "hi", "bn", "ne", "ta", "kn"}
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_INPUT_TYPES = {"text", "voice"}
 DEFAULT_INPUT_TYPE = "text"
+SUPPORTED_CARD_TYPES = {
+    "emergency",
+    "action",
+    "hydration",
+    "medication",
+    "doctor_visit",
+    "symptom_warning",
+    "nutrition",
+    "followup",
+}
 
 
 class MedetSource(BaseModel):
@@ -30,6 +40,21 @@ class MedetVoiceMetadata(BaseModel):
     audio_url: str | None = None
 
 
+class MedetCard(BaseModel):
+    type: str
+    title: str
+    content: str
+
+    @field_validator("type")
+    @classmethod
+    def card_type_must_be_supported(cls, value: str) -> str:
+        card_type = value.strip().lower()
+        if card_type not in SUPPORTED_CARD_TYPES:
+            supported = ", ".join(sorted(SUPPORTED_CARD_TYPES))
+            raise ValueError(f"Unsupported card type. Use one of: {supported}.")
+        return card_type
+
+
 class MedetResponse(BaseModel):
     response: str
     input_type: str = DEFAULT_INPUT_TYPE
@@ -40,6 +65,7 @@ class MedetResponse(BaseModel):
     medical_warning: bool = False
     trust_level: str = "safe"
     suggest_doctor: bool = False
+    cards: list[MedetCard] = Field(default_factory=list)
     sources: list[MedetSource] = Field(default_factory=list)
     conversation_id: str = Field(default_factory=lambda: str(uuid4()))
     voice: MedetVoiceMetadata | None = None

@@ -29,6 +29,8 @@ def test_chat_returns_frontend_contract_with_conversation_id() -> None:
     assert payload["medical_warning"] is False
     assert payload["trust_level"] == "safe"
     assert payload["suggest_doctor"] is True
+    assert payload["cards"][0]["type"] == "emergency"
+    assert "doctor_visit" in [card["type"] for card in payload["cards"]]
     assert payload["sources"] == []
     assert "medical help immediately" in payload["response"]
 
@@ -90,6 +92,8 @@ def test_chat_guards_unsafe_ai_response(monkeypatch) -> None:
     assert payload["medical_warning"] is True
     assert payload["trust_level"] == "guarded"
     assert payload["suggest_doctor"] is True
+    assert "medication" in [card["type"] for card in payload["cards"]]
+    assert "symptom_warning" in [card["type"] for card in payload["cards"]]
     assert "definitely have" not in payload["response"].lower()
     assert "500mg" not in payload["response"].lower()
 
@@ -230,3 +234,4 @@ def test_stream_returns_tokens_and_final_metadata() -> None:
     assert metadata["reason"] == "Possible breathing difficulty detected"
     assert metadata["medical_warning"] is False
     assert metadata["trust_level"] == "safe"
+    assert metadata["cards"][0]["type"] == "emergency"

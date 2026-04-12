@@ -11,6 +11,12 @@ def test_emergency_response_adds_escalation_metadata() -> None:
     assert result.severity == "high"
     assert result.suggest_doctor is True
     assert "medical help immediately" in result.response
+    assert [card.type for card in result.cards] == [
+        "emergency",
+        "action",
+        "doctor_visit",
+        "symptom_warning",
+    ]
 
 
 def test_regular_response_keeps_schema_low_risk() -> None:
@@ -32,6 +38,23 @@ def test_regular_response_keeps_schema_low_risk() -> None:
         "medical_warning": False,
         "trust_level": "safe",
         "suggest_doctor": False,
+        "cards": [
+            {
+                "type": "action",
+                "title": "Recommended Action",
+                "content": "Rest in a safe place, keep the person comfortable, and watch symptoms closely.",
+            },
+            {
+                "type": "hydration",
+                "title": "Fluids",
+                "content": "Drink clean water or oral rehydration fluid in small sips, especially with fever, vomiting, loose motion, or heat.",
+            },
+            {
+                "type": "followup",
+                "title": "Follow Up",
+                "content": "Tell me the person’s age, how long this has been happening, and whether symptoms are getting better or worse.",
+            },
+        ],
         "sources": [],
         "conversation_id": "test-conversation",
         "voice": None,
@@ -72,6 +95,8 @@ def test_unsafe_ai_response_is_guarded() -> None:
     assert "definitely have" not in result.response.lower()
     assert "500mg" not in result.response.lower()
     assert "cannot diagnose" in result.response.lower()
+    assert "medication" in [card.type for card in result.cards]
+    assert "doctor_visit" in [card.type for card in result.cards]
 
 
 def test_emergency_response_keeps_safe_trust_metadata() -> None:
@@ -86,3 +111,4 @@ def test_emergency_response_keeps_safe_trust_metadata() -> None:
     assert result.trust_level == "safe"
     assert result.suggest_doctor is True
     assert "medical help immediately" in result.response
+    assert result.cards[0].type == "emergency"
