@@ -11,33 +11,97 @@ import {
   MicOff,
   MessageCircle,
   Pause,
+  Pill,
   Play,
   Send,
   Volume2,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { AppShell, PageTransition } from "@/components/layout";
 import { useLanguage } from "@/i18n/context";
+import {
+  getStoredSession,
+  sendMedetChat,
+  speakWithBrowser,
+  type MedetCard,
+  type MedetCardType,
+  type MedetChatResponse,
+} from "@/lib/api";
 
-const transcriptSamples = [
-  "I have fever since yesterday evening.",
-  "My child is coughing at night.",
-  "I feel chest pain and breathing difficulty.",
-];
+const cardTone: Record<MedetCardType, string> = {
+  emergency: "border-red-200 bg-red-50 text-red-950",
+  action: "border-blue-100 bg-blue-50 text-blue-950",
+  hydration: "border-cyan-100 bg-cyan-50 text-cyan-950",
+  medication: "border-violet-100 bg-violet-50 text-violet-950",
+  doctor_visit: "border-emerald-100 bg-emerald-50 text-emerald-950",
+  symptom_warning: "border-amber-100 bg-amber-50 text-amber-950",
+  nutrition: "border-lime-100 bg-lime-50 text-lime-950",
+  followup: "border-slate-200 bg-white text-medet-text",
+};
+
+const cardIcon = {
+  emergency: AlertTriangle,
+  action: CheckCircle2,
+  hydration: Volume2,
+  medication: Pill,
+  doctor_visit: MessageCircle,
+  symptom_warning: AlertTriangle,
+  nutrition: CheckCircle2,
+  followup: MessageCircle,
+} satisfies Record<MedetCardType, LucideIcon>;
+
+function VoiceCardList({ cards }: { cards: MedetCard[] }) {
+  if (!cards.length) return null;
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {cards.map((card) => {
+        const Icon = cardIcon[card.type];
+        return (
+          <div key={`${card.type}-${card.title}`} className={`rounded-2xl border p-3 ${cardTone[card.type]}`}>
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <Icon className="h-4 w-4 shrink-0" />
+              {card.title}
+            </div>
+            <p className="mt-1 text-sm leading-relaxed">{card.content}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function VoicePage() {
   const { t, language, languages } = useLanguage();
   const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(true);
-  const [sampleIndex, setSampleIndex] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [medetResponse, setMedetResponse] = useState<MedetChatResponse | null>(null);
 
   const currentLanguage = useMemo(
     () => languages.find((item) => item.code === language),
     [language, languages]
   );
 
-  const transcript = transcriptSamples[sampleIndex];
-  const isEmergency = /chest pain|breathing/i.test(transcript);
+  const isEmergency = medetResponse?.emergency ?? false;
+
+  async function askMedetVoice() {
+    const cleanTranscript = transcript.trim();
+    if (!cleanTranscript) return;
+    setIsChecking(true);
+    try {
+      const response = await sendMedetChat(cleanTranscript, language, getStoredSession(), {
+        inputType: "voice",
+      });
+      setMedetResponse(response);
+      const spoken = response.voice?.tts_text || response.response;
+      setIsSpeaking(speakWithBrowser(spoken, language));
+    } finally {
+      setIsChecking(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -104,23 +168,25 @@ export default function VoicePage() {
                         Speech to text
                       </span>
                     </div>
-                    <p className="text-2xl font-bold leading-relaxed text-medet-text">{transcript}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {transcriptSamples.map((sample, index) => (
-                        <button
-                          key={sample}
-                          type="button"
-                          onClick={() => setSampleIndex(index)}
-                          className={`min-h-10 rounded-2xl px-3 text-sm font-bold ${
-                            index === sampleIndex
-                              ? "bg-medet-primary text-white"
-                              : "bg-white text-medet-text"
-                          }`}
-                        >
-                          Sample {index + 1}
-                        </button>
-                      ))}
-                    </div>
+                    <textarea
+                      value={transcript}
+                      onChange={(event) => {
+                        setTranscript(event.target.value);
+                        setMedetResponse(null);
+                      }}
+                      rows={4}
+                      placeholder="Speech-to-text transcript will appear here. You can type a transcript to test voice mode."
+                      className="min-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xl font-bold leading-relaxed text-medet-text outline-none focus:border-medet-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void askMedetVoice()}
+                      disabled={isChecking || !transcript.trim()}
+                      className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-medet-primary px-4 text-sm font-bold text-white disabled:opacity-60"
+                    >
+                      <Send className="h-4 w-4" />
+                      {isChecking ? "Checking with MEDET..." : "Check with MEDET"}
+                    </button>
                   </div>
 
                   {isEmergency ? (
@@ -134,9 +200,13 @@ export default function VoicePage() {
                         <div>
                           <h2 className="text-xl font-bold text-red-950">{t("emergency.warningTitle")}</h2>
                           <p className="mt-2 text-sm leading-relaxed text-red-900">
-                            MEDET detected possible emergency words. Please call emergency services
-                            or go to the nearest hospital now.
+                            {medetResponse?.response}
                           </p>
+                          {medetResponse?.cards && (
+                            <div className="mt-4">
+                              <VoiceCardList cards={medetResponse.cards} />
+                            </div>
+                          )}
                           <div className="mt-4 flex flex-wrap gap-2">
                             <Link
                               href="tel:112"
@@ -161,9 +231,14 @@ export default function VoicePage() {
                         Safe to continue with follow-up questions
                       </div>
                       <p className="text-base leading-relaxed text-medet-text">
-                        I heard your symptom. How long has this been happening, and is there any
-                        severe pain, dizziness, or trouble breathing?
+                        {medetResponse?.response ||
+                          "Enter a transcript and send it to the backend. Medet will return voice metadata, safety status, and care cards."}
                       </p>
+                      {medetResponse?.cards && (
+                        <div className="mt-4">
+                          <VoiceCardList cards={medetResponse.cards} />
+                        </div>
+                      )}
                     </div>
                   )}
 

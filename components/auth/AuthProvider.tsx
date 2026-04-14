@@ -25,7 +25,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   signInPhone: (input: AuthInput) => Promise<AuthSession>;
   signInGoogle: () => Promise<AuthSession>;
-  continueGuest: () => AuthSession;
+  continueGuest: () => void;
   signOutUser: () => Promise<void>;
 }
 

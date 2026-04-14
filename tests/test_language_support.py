@@ -1,4 +1,4 @@
-from backend.app.services.language_support import (
+from app.services.language_support import (
     build_multilingual_prompt_context,
     get_emergency_escalation_text,
     get_followup_text,

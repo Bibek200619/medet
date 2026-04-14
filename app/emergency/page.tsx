@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -13,7 +14,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { AppShell, PageTransition } from "@/components/layout";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/i18n/context";
+import {
+  getBrowserLocation,
+  getHealthProfiles,
+  getNearbyClinics,
+  type EmergencyContact,
+  type NearbyClinic,
+} from "@/lib/api";
 
 const warningSigns = [
   "Chest pain or pressure",
@@ -23,28 +33,71 @@ const warningSigns = [
   "Signs of stroke or seizure",
 ];
 
-const emergencyPlaces = [
-  {
-    name: "District Civil Hospital",
-    type: "24/7 Emergency",
-    distance: "2.4 km",
-    phone: "108",
-  },
-  {
-    name: "Community Health Centre",
-    type: "Primary emergency care",
-    distance: "4.1 km",
-    phone: "112",
-  },
-];
-
-const contacts = [
-  { name: "Asha Worker", relation: "Village health worker", phone: "+91 90000 11223" },
-  { name: "Family Contact", relation: "Saved emergency contact", phone: "+91 90000 44556" },
-];
-
 export default function EmergencyPage() {
   const { t } = useLanguage();
+  const { session } = useAuth();
+  const [facilities, setFacilities] = useState<NearbyClinic[]>([]);
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [isLoadingFacilities, setIsLoadingFacilities] = useState(true);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadFacilities() {
+      setIsLoadingFacilities(true);
+      try {
+        const location = await getBrowserLocation().catch(() => null);
+        const items = await getNearbyClinics(location);
+        if (!isMounted) return;
+        setFacilities(
+          items.filter((item) => item.type === "hospital" || item.type === "health_center")
+        );
+      } catch {
+        if (!isMounted) return;
+        setErrorMessage("Could not load emergency facility data from the backend.");
+        setFacilities([]);
+      } finally {
+        if (isMounted) setIsLoadingFacilities(false);
+      }
+    }
+
+    void loadFacilities();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadContacts() {
+      setIsLoadingContacts(true);
+      try {
+        const profiles = await getHealthProfiles(session);
+        if (!isMounted) return;
+        setContacts(profiles.flatMap((profile) => profile.emergencyContacts));
+      } catch {
+        if (!isMounted) return;
+        setContacts([]);
+      } finally {
+        if (isMounted) setIsLoadingContacts(false);
+      }
+    }
+
+    void loadContacts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session]);
+
+  const uniqueContacts = useMemo(
+    () => Array.from(new Map(contacts.map((contact) => [contact.phone, contact])).values()),
+    [contacts]
+  );
 
   return (
     <AppShell>
@@ -113,18 +166,24 @@ export default function EmergencyPage() {
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-2xl font-bold text-medet-text">{t("emergency.nearestHospital")}</h2>
-                    <p className="text-sm text-medet-text-secondary">Demo locations ready for map/API integration</p>
+                    <p className="text-sm text-medet-text-secondary">Loaded from backend facility data when available</p>
                   </div>
                   <Hospital className="h-6 w-6 text-medet-primary" />
                 </div>
 
                 <div className="space-y-3">
-                  {emergencyPlaces.map((place) => (
-                    <article key={place.name} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  {isLoadingFacilities &&
+                    Array.from({ length: 2 }).map((_, index) => (
+                      <article key={index} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <Skeleton className="h-20 w-full rounded-2xl" />
+                      </article>
+                    ))}
+                  {!isLoadingFacilities && facilities.map((place) => (
+                    <article key={place.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-bold text-medet-text">{place.name}</h3>
-                          <p className="mt-1 text-sm text-medet-text-secondary">{place.type}</p>
+                          <p className="mt-1 text-sm text-medet-text-secondary">{place.address}</p>
                         </div>
                         <span className="rounded-full bg-medet-secondary-light px-3 py-1 text-xs font-bold text-medet-secondary">
                           {place.distance}
@@ -148,13 +207,29 @@ export default function EmergencyPage() {
                       </div>
                     </article>
                   ))}
+                  {!isLoadingFacilities && facilities.length === 0 && (
+                    <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-relaxed text-medet-text-secondary">
+                      No nearby emergency facility data is available from the backend yet. Use the emergency call buttons above if help is needed now.
+                    </div>
+                  )}
+                  {errorMessage && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                      {errorMessage}
+                    </div>
+                  )}
                 </div>
               </section>
 
               <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <h2 className="mb-4 text-2xl font-bold text-medet-text">{t("emergency.emergencyContacts")}</h2>
                 <div className="space-y-3">
-                  {contacts.map((contact) => (
+                  {isLoadingContacts &&
+                    Array.from({ length: 2 }).map((_, index) => (
+                      <article key={index} className="rounded-3xl border border-slate-200 p-4">
+                        <Skeleton className="h-20 w-full rounded-2xl" />
+                      </article>
+                    ))}
+                  {!isLoadingContacts && uniqueContacts.map((contact) => (
                     <article key={contact.phone} className="rounded-3xl border border-slate-200 p-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-medet-primary-light">
@@ -174,6 +249,11 @@ export default function EmergencyPage() {
                       </Link>
                     </article>
                   ))}
+                  {!isLoadingContacts && uniqueContacts.length === 0 && (
+                    <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-relaxed text-medet-text-secondary">
+                      No saved emergency contacts found from backend profiles.
+                    </div>
+                  )}
                 </div>
               </section>
             </div>

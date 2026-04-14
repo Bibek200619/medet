@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   CalendarClock,
@@ -13,20 +13,15 @@ import {
   SunMedium,
 } from "lucide-react";
 import { AppShell, PageTransition } from "@/components/layout";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useLanguage } from "@/i18n/context";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEffect } from "react";
-
-type ReminderStatus = "taken" | "pending" | "missed";
-
-type Reminder = {
-  id: number;
-  medicine: string;
-  dosage: string;
-  time: string;
-  period: "morning" | "afternoon" | "evening" | "night";
-  status: ReminderStatus;
-};
+import {
+  createReminderDraft,
+  getReminders,
+  saveReminder,
+  type MedicineReminder,
+} from "@/lib/api";
 
 const periodIcons = {
   morning: Sunrise,
@@ -35,36 +30,81 @@ const periodIcons = {
   night: Moon,
 };
 
-const initialReminders: Reminder[] = [
-  { id: 1, medicine: "Paracetamol", dosage: "500 mg after food", time: "8:00 AM", period: "morning", status: "taken" },
-  { id: 2, medicine: "ORS solution", dosage: "1 glass slowly", time: "1:00 PM", period: "afternoon", status: "pending" },
-  { id: 3, medicine: "Iron tablet", dosage: "1 tablet after dinner", time: "8:30 PM", period: "night", status: "pending" },
-];
-
 export default function RemindersPage() {
   const { t } = useLanguage();
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const { session } = useAuth();
+  const [reminders, setReminders] = useState<MedicineReminder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [medicineName, setMedicineName] = useState("");
+  const [dosage, setDosage] = useState("");
+  const [time, setTime] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setReminders(initialReminders);
-      setIsLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    let isMounted = true;
+
+    async function loadReminders() {
+      setIsLoading(true);
+      setErrorMessage("");
+      try {
+        const items = await getReminders(session);
+        if (isMounted) setReminders(items);
+      } catch {
+        if (!isMounted) return;
+        setErrorMessage("Could not load reminders from the backend.");
+        setReminders([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    void loadReminders();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session]);
 
   const completedCount = useMemo(
     () => reminders.filter((reminder) => reminder.status === "taken").length,
     [reminders]
   );
 
-  function markTaken(id: number) {
-    setReminders((current) =>
-      current.map((reminder) =>
-        reminder.id === id ? { ...reminder, status: "taken" } : reminder
-      )
-    );
+  async function markTaken(id: string) {
+    const reminder = reminders.find((item) => item.id === id);
+    if (!reminder) return;
+
+    try {
+      const updated = await saveReminder({ ...reminder, status: "taken" }, session);
+      setReminders((current) =>
+        current.map((item) => (item.id === id ? updated : item))
+      );
+    } catch {
+      setErrorMessage("Could not update reminder in the backend.");
+    }
+  }
+
+  async function handleAddReminder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!medicineName.trim() || !dosage.trim() || !time.trim()) return;
+
+    setIsSaving(true);
+    setErrorMessage("");
+    try {
+      const saved = await saveReminder(
+        createReminderDraft(medicineName.trim(), dosage.trim(), time),
+        session
+      );
+      setReminders((current) => [...current, saved]);
+      setMedicineName("");
+      setDosage("");
+      setTime("");
+    } catch {
+      setErrorMessage("Could not save reminder. Please check the backend connection.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -97,7 +137,7 @@ export default function RemindersPage() {
                   {completedCount}/{reminders.length} taken today
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-white/75">
-                  Large cards and simple status labels help family members support medication routines.
+                  Reminders load from the backend. Add your first reminder when storage is connected.
                 </p>
               </div>
             </section>
@@ -129,7 +169,7 @@ export default function RemindersPage() {
                       </div>
                     </article>
                   ))
-                ) : (
+                ) : reminders.length > 0 ? (
                   reminders.map((reminder) => {
                     const Icon = periodIcons[reminder.period];
                     const isTaken = reminder.status === "taken";
@@ -151,7 +191,7 @@ export default function RemindersPage() {
                             </div>
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="text-xl font-bold text-medet-text">{reminder.medicine}</h2>
+                                <h2 className="text-xl font-bold text-medet-text">{reminder.medicineName}</h2>
                                 <span
                                   className={`rounded-full px-3 py-1 text-xs font-bold ${
                                     isTaken
@@ -191,31 +231,62 @@ export default function RemindersPage() {
                       </article>
                     );
                   })
+                ) : (
+                  <article className="rounded-[1.75rem] border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm">
+                    <Pill className="mx-auto h-9 w-9 text-medet-text-secondary" />
+                    <h2 className="mt-3 text-xl font-bold text-medet-text">No reminders found</h2>
+                    <p className="mt-2 text-sm text-medet-text-secondary">
+                      Saved reminders from the backend will appear here.
+                    </p>
+                  </article>
+                )}
+                {errorMessage && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                    {errorMessage}
+                  </div>
                 )}
               </div>
 
-              <aside className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <form onSubmit={handleAddReminder} className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <h2 className="text-xl font-bold text-medet-text">Add a simple reminder</h2>
                 <p className="mt-2 text-sm text-medet-text-secondary">
-                  The backend can connect this form to Supabase sessions later.
+                  This form saves through the backend reminder API.
                 </p>
                 <div className="mt-5 space-y-3">
-                  {[
-                    t("reminders.medicineName"),
-                    t("reminders.dosage"),
-                    t("reminders.time"),
-                  ].map((label) => (
-                    <label key={label} className="block">
-                      <span className="mb-1 block text-sm font-bold text-medet-text">{label}</span>
-                      <input className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-medet-primary" />
-                    </label>
-                  ))}
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-bold text-medet-text">{t("reminders.medicineName")}</span>
+                    <input
+                      value={medicineName}
+                      onChange={(event) => setMedicineName(event.target.value)}
+                      className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-medet-primary"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-bold text-medet-text">{t("reminders.dosage")}</span>
+                    <input
+                      value={dosage}
+                      onChange={(event) => setDosage(event.target.value)}
+                      className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-medet-primary"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-bold text-medet-text">{t("reminders.time")}</span>
+                    <input
+                      value={time}
+                      type="time"
+                      onChange={(event) => setTime(event.target.value)}
+                      className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-medet-primary"
+                    />
+                  </label>
                 </div>
-                <button className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-medet-warm px-5 text-sm font-bold text-white">
+                <button
+                  disabled={isSaving || !medicineName.trim() || !dosage.trim() || !time.trim()}
+                  className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-medet-warm px-5 text-sm font-bold text-white disabled:opacity-60"
+                >
                   <Plus className="h-4 w-4" />
-                  {t("reminders.addReminder")}
+                  {isSaving ? "Saving..." : t("reminders.addReminder")}
                 </button>
-              </aside>
+              </form>
             </section>
           </div>
         </main>

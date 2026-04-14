@@ -1,4 +1,4 @@
-from backend.app.services.medet_response_builder import build_medet_response
+from app.services.medet_response_builder import build_medet_response
 
 
 def test_emergency_response_adds_escalation_metadata() -> None:
