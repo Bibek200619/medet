@@ -154,8 +154,26 @@ async function apiFetch<T>(
   return readJson<T>(response);
 }
 
-export function getStoredSession() {
-  return readStorage<AuthSession | null>(SESSION_STORAGE_KEY, null);
+let cachedSessionString: string | null = null;
+let cachedSession: AuthSession | null = null;
+
+export function getStoredSession(): AuthSession | null {
+  if (typeof window === "undefined") return null;
+  const value = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (value === cachedSessionString) {
+    return cachedSession;
+  }
+  cachedSessionString = value;
+  if (!value) {
+    cachedSession = null;
+  } else {
+    try {
+      cachedSession = JSON.parse(value);
+    } catch {
+      cachedSession = null;
+    }
+  }
+  return cachedSession;
 }
 
 export function saveSession(session: AuthSession | null) {
