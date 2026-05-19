@@ -17,6 +17,7 @@ def test_regular_response_keeps_schema_low_risk() -> None:
     result = build_medet_response(
         ai_text="Drink clean fluids and rest. Tell me if fever starts.",
         user_message="Mild headache after working in sun.",
+        conversation_id="test-conversation",
     )
 
     response_dict = result.model_dump() if hasattr(result, "model_dump") else result.dict()
@@ -28,4 +29,5 @@ def test_regular_response_keeps_schema_low_risk() -> None:
         "reason": None,
         "suggest_doctor": False,
         "sources": [],
+        "conversation_id": "test-conversation",
     }

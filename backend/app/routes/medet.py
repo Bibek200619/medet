@@ -1,18 +1,36 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from backend.app.schemas.medet_response import MedetChatRequest, MedetResponse
+from backend.app.core.errors import MedetAPIError, MedetErrorCode
+from backend.app.schemas.medet_response import (
+    MedetChatRequest,
+    MedetErrorResponse,
+    MedetResponse,
+    normalize_sources,
+)
+from backend.app.services.language_support import get_language_profile
 from backend.app.services.medet_response_builder import build_medet_response
 
 router = APIRouter(prefix="/medet", tags=["medet"])
 
 
-@router.post("/chat", response_model=MedetResponse)
+@router.post(
+    "/chat",
+    response_model=MedetResponse,
+    responses={
+        400: {"model": MedetErrorResponse},
+        422: {"model": MedetErrorResponse},
+        503: {"model": MedetErrorResponse},
+        504: {"model": MedetErrorResponse},
+    },
+)
 async def medet_chat(payload: MedetChatRequest) -> MedetResponse:
     """
     Non-streaming Medet response.
@@ -21,15 +39,46 @@ async def medet_chat(payload: MedetChatRequest) -> MedetResponse:
     call in the host app. The response builder is the healthcare-safe integration
     point and should stay independent from retrieval or model providers.
     """
-    ai_text, sources = await _generate_ai_response(payload.message, payload.language)
-    return build_medet_response(
-        ai_text=ai_text,
-        user_message=payload.message,
-        sources=sources,
-    )
+    conversation_id = _conversation_id(payload)
+    try:
+        ai_text, sources = await _generate_ai_response(
+            payload.message,
+            payload.language,
+            conversation_id,
+        )
+        return build_medet_response(
+            ai_text=ai_text,
+            user_message=payload.message,
+            sources=sources,
+            conversation_id=conversation_id,
+        )
+    except asyncio.TimeoutError as exc:
+        raise MedetAPIError(
+            MedetErrorCode.TIMEOUT,
+            "The healthcare AI response took too long. Please try again.",
+            status_code=504,
+            retryable=True,
+        ) from exc
+    except MedetAPIError:
+        raise
+    except Exception as exc:
+        raise MedetAPIError(
+            MedetErrorCode.UPSTREAM_FAILURE,
+            "The healthcare AI service could not complete the request.",
+            status_code=503,
+            retryable=True,
+        ) from exc
 
 
-@router.post("/chat/stream")
+@router.post(
+    "/chat/stream",
+    responses={
+        400: {"model": MedetErrorResponse},
+        422: {"model": MedetErrorResponse},
+        503: {"model": MedetErrorResponse},
+        504: {"model": MedetErrorResponse},
+    },
+)
 async def medet_chat_stream(payload: MedetChatRequest) -> StreamingResponse:
     """
     Streaming response that keeps token streaming intact and sends metadata last.
@@ -38,43 +87,87 @@ async def medet_chat_stream(payload: MedetChatRequest) -> StreamingResponse:
     the final `metadata` event to show emergency UI cards.
     """
     return StreamingResponse(
-        _stream_with_metadata(payload),
+        _stream_with_metadata(payload, _conversation_id(payload)),
         media_type="text/event-stream",
     )
 
 
-async def _stream_with_metadata(payload: MedetChatRequest) -> AsyncIterator[str]:
+async def _stream_with_metadata(
+    payload: MedetChatRequest,
+    conversation_id: str,
+) -> AsyncIterator[str]:
     chunks: list[str] = []
     sources: list[dict[str, str] | str] = []
 
-    async for event in _stream_ai_response(payload.message, payload.language):
-        if event.get("type") == "source":
-            sources.append(event.get("source", {}))
-            continue
+    try:
+        async for event in _stream_ai_response(
+            payload.message,
+            payload.language,
+            conversation_id,
+        ):
+            if event.get("type") == "source":
+                source = event.get("source", {})
+                if isinstance(source, (dict, str)):
+                    sources.append(source)
+                    for normalized_source in normalize_sources([source]):
+                        yield _sse(
+                            "source",
+                            {
+                                "type": "source",
+                                "source": _model_dump(normalized_source),
+                                "conversation_id": conversation_id,
+                            },
+                        )
+                continue
 
-        token = str(event.get("content", ""))
-        if not token:
-            continue
+            token = str(event.get("content", ""))
+            if not token:
+                continue
 
-        chunks.append(token)
-        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            chunks.append(token)
+            yield _sse(
+                "token",
+                {
+                    "type": "token",
+                    "content": token,
+                    "conversation_id": conversation_id,
+                },
+            )
 
-    structured = build_medet_response(
-        ai_text="".join(chunks),
-        user_message=payload.message,
-        sources=sources,
-    )
-    metadata = (
-        structured.model_dump_json()
-        if hasattr(structured, "model_dump_json")
-        else structured.json()
-    )
-    yield f"event: metadata\ndata: {metadata}\n\n"
+        structured = build_medet_response(
+            ai_text="".join(chunks),
+            user_message=payload.message,
+            sources=sources,
+            conversation_id=conversation_id,
+        )
+        yield _sse("metadata", _model_dump(structured))
+    except asyncio.TimeoutError:
+        yield _sse_error(
+            MedetErrorCode.TIMEOUT,
+            "The healthcare AI response took too long. Please try again.",
+            conversation_id,
+            retryable=True,
+        )
+    except MedetAPIError as exc:
+        yield _sse_error(
+            exc.code,
+            exc.message,
+            conversation_id,
+            retryable=exc.retryable,
+        )
+    except Exception:
+        yield _sse_error(
+            MedetErrorCode.UPSTREAM_FAILURE,
+            "The healthcare AI service could not complete the request.",
+            conversation_id,
+            retryable=True,
+        )
 
 
 async def _generate_ai_response(
     message: str,
-    language: str | None = None,
+    language: str,
+    conversation_id: str,
 ) -> tuple[str, list[dict[str, str] | str]]:
     """
     Thin placeholder for existing Tavily/Ollama orchestration.
@@ -82,7 +175,9 @@ async def _generate_ai_response(
     In the full app, call the current Medet/Omnix generation service here and
     return `(answer_text, sources)`.
     """
-    del language
+    del conversation_id
+    language_profile = get_language_profile(language)
+    del language_profile
     return (
         "I understand. Please share how long this has been happening, the age of "
         "the person, and whether there is fever, pain, bleeding, or weakness.",
@@ -92,11 +187,48 @@ async def _generate_ai_response(
 
 async def _stream_ai_response(
     message: str,
-    language: str | None = None,
+    language: str,
+    conversation_id: str,
 ) -> AsyncIterator[dict[str, object]]:
     """Placeholder adapter for the existing streaming generator."""
-    answer, sources = await _generate_ai_response(message, language)
+    answer, sources = await _generate_ai_response(message, language, conversation_id)
     for source in sources:
         yield {"type": "source", "source": source}
     for token in answer.split(" "):
         yield {"type": "token", "content": token + " "}
+
+
+def _conversation_id(payload: MedetChatRequest) -> str:
+    return payload.conversation_id or str(uuid4())
+
+
+def _sse(event: str, payload: dict[str, object]) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
+def _sse_error(
+    code: MedetErrorCode,
+    message: str,
+    conversation_id: str,
+    *,
+    retryable: bool,
+) -> str:
+    return _sse(
+        "error",
+        {
+            "type": "error",
+            "error": {
+                "code": code.value,
+                "message": message,
+                "retryable": retryable,
+                "field": None,
+            },
+            "conversation_id": conversation_id,
+        },
+    )
+
+
+def _model_dump(model: object) -> dict[str, object]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump()  # type: ignore[no-any-return]
+    return model.dict()  # type: ignore[attr-defined,no-any-return]
