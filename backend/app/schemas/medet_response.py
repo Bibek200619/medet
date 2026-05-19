@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 
 SUPPORTED_LANGUAGES = {"en", "hi", "bn", "ne", "ta", "kn"}
 DEFAULT_LANGUAGE = "en"
+SUPPORTED_INPUT_TYPES = {"text", "voice"}
+DEFAULT_INPUT_TYPE = "text"
 
 
 class MedetSource(BaseModel):
@@ -17,18 +19,33 @@ class MedetSource(BaseModel):
     source_type: str = "tavily"
 
 
+class MedetVoiceMetadata(BaseModel):
+    interaction_mode: str = "voice_first"
+    speech_to_text_status: str = "not_required"
+    transcript: str | None = None
+    transcript_language: str | None = None
+    voice_locale: str | None = None
+    tts_text: str | None = None
+    audio_status: str = "not_generated"
+    audio_url: str | None = None
+
+
 class MedetResponse(BaseModel):
     response: str
+    input_type: str = DEFAULT_INPUT_TYPE
+    language: str = DEFAULT_LANGUAGE
     emergency: bool = False
     severity: str = "low"
     reason: str | None = None
     suggest_doctor: bool = False
     sources: list[MedetSource] = Field(default_factory=list)
     conversation_id: str = Field(default_factory=lambda: str(uuid4()))
+    voice: MedetVoiceMetadata | None = None
 
 
 class MedetChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
+    input_type: str = DEFAULT_INPUT_TYPE
     language: str = DEFAULT_LANGUAGE
     conversation_id: str | None = None
     stream: bool = False
@@ -40,6 +57,15 @@ class MedetChatRequest(BaseModel):
         if not cleaned:
             raise ValueError("Message cannot be empty.")
         return cleaned
+
+    @field_validator("input_type")
+    @classmethod
+    def input_type_must_be_supported(cls, value: str | None) -> str:
+        input_type = (value or DEFAULT_INPUT_TYPE).strip().lower()
+        if input_type not in SUPPORTED_INPUT_TYPES:
+            supported = ", ".join(sorted(SUPPORTED_INPUT_TYPES))
+            raise ValueError(f"Unsupported input type. Use one of: {supported}.")
+        return input_type
 
     @field_validator("language")
     @classmethod

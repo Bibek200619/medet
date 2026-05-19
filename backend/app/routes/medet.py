@@ -43,6 +43,7 @@ async def medet_chat(payload: MedetChatRequest) -> MedetResponse:
     try:
         ai_text, sources = await _generate_ai_response(
             payload.message,
+            payload.input_type,
             payload.language,
             conversation_id,
         )
@@ -51,6 +52,8 @@ async def medet_chat(payload: MedetChatRequest) -> MedetResponse:
             user_message=payload.message,
             sources=sources,
             conversation_id=conversation_id,
+            input_type=payload.input_type,
+            language=payload.language,
         )
     except asyncio.TimeoutError as exc:
         raise MedetAPIError(
@@ -102,6 +105,7 @@ async def _stream_with_metadata(
     try:
         async for event in _stream_ai_response(
             payload.message,
+            payload.input_type,
             payload.language,
             conversation_id,
         ):
@@ -115,6 +119,8 @@ async def _stream_with_metadata(
                             {
                                 "type": "source",
                                 "source": _model_dump(normalized_source),
+                                "input_type": payload.input_type,
+                                "language": payload.language,
                                 "conversation_id": conversation_id,
                             },
                         )
@@ -130,6 +136,8 @@ async def _stream_with_metadata(
                 {
                     "type": "token",
                     "content": token,
+                    "input_type": payload.input_type,
+                    "language": payload.language,
                     "conversation_id": conversation_id,
                 },
             )
@@ -139,6 +147,8 @@ async def _stream_with_metadata(
             user_message=payload.message,
             sources=sources,
             conversation_id=conversation_id,
+            input_type=payload.input_type,
+            language=payload.language,
         )
         yield _sse("metadata", _model_dump(structured))
     except asyncio.TimeoutError:
@@ -166,6 +176,7 @@ async def _stream_with_metadata(
 
 async def _generate_ai_response(
     message: str,
+    input_type: str,
     language: str,
     conversation_id: str,
 ) -> tuple[str, list[dict[str, str] | str]]:
@@ -176,6 +187,7 @@ async def _generate_ai_response(
     return `(answer_text, sources)`.
     """
     del conversation_id
+    del input_type
     language_profile = get_language_profile(language)
     del language_profile
     return (
@@ -187,11 +199,17 @@ async def _generate_ai_response(
 
 async def _stream_ai_response(
     message: str,
+    input_type: str,
     language: str,
     conversation_id: str,
 ) -> AsyncIterator[dict[str, object]]:
     """Placeholder adapter for the existing streaming generator."""
-    answer, sources = await _generate_ai_response(message, language, conversation_id)
+    answer, sources = await _generate_ai_response(
+        message,
+        input_type,
+        language,
+        conversation_id,
+    )
     for source in sources:
         yield {"type": "source", "source": source}
     for token in answer.split(" "):
