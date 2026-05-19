@@ -26,6 +26,8 @@ def test_chat_returns_frontend_contract_with_conversation_id() -> None:
     assert payload["language"] == "en"
     assert payload["emergency"] is True
     assert payload["severity"] == "high"
+    assert payload["medical_warning"] is False
+    assert payload["trust_level"] == "safe"
     assert payload["suggest_doctor"] is True
     assert payload["sources"] == []
     assert "medical help immediately" in payload["response"]
@@ -65,6 +67,31 @@ def test_chat_returns_normalized_tavily_sources(monkeypatch) -> None:
             "source_type": "tavily",
         }
     ]
+
+
+def test_chat_guards_unsafe_ai_response(monkeypatch) -> None:
+    async def fake_generate(
+        message: str,
+        input_type: str,
+        language: str,
+        conversation_id: str,
+    ):
+        return ("You definitely have malaria. Take antibiotic 500mg now.", [])
+
+    monkeypatch.setattr(medet, "_generate_ai_response", fake_generate)
+
+    response = client.post(
+        "/medet/chat",
+        json={"message": "I have fever", "language": "en"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["medical_warning"] is True
+    assert payload["trust_level"] == "guarded"
+    assert payload["suggest_doctor"] is True
+    assert "definitely have" not in payload["response"].lower()
+    assert "500mg" not in payload["response"].lower()
 
 
 def test_chat_accepts_voice_transcript_contract() -> None:
@@ -201,3 +228,5 @@ def test_stream_returns_tokens_and_final_metadata() -> None:
     assert metadata["language"] == "en"
     assert metadata["emergency"] is True
     assert metadata["reason"] == "Possible breathing difficulty detected"
+    assert metadata["medical_warning"] is False
+    assert metadata["trust_level"] == "safe"
