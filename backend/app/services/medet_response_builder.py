@@ -9,6 +9,7 @@ from backend.app.schemas.medet_response import (
     normalize_sources,
 )
 from backend.app.services.emergency_detector import detect_emergency
+from backend.app.services.healthcare_cards import build_healthcare_cards
 from backend.app.services.language_support import get_doctor_suggestion_text
 from backend.app.services.medical_safety_guard import guard_medical_response
 from backend.app.services.voice_support import build_voice_metadata
@@ -51,6 +52,17 @@ def build_medet_response(
     if suggest_doctor and not emergency:
         final_text = _append_once(final_text, get_doctor_suggestion_text(language))
 
+    cards = build_healthcare_cards(
+        response=final_text,
+        user_message=user_message,
+        emergency=emergency,
+        severity=str(detection["severity"]),
+        suggest_doctor=should_suggest_doctor,
+        medical_warning=safety.medical_warning,
+        trust_level=safety.trust_level,
+        language=language,
+    )
+
     return MedetResponse(
         response=final_text,
         input_type=input_type,
@@ -61,6 +73,7 @@ def build_medet_response(
         medical_warning=safety.medical_warning,
         trust_level=safety.trust_level,
         suggest_doctor=should_suggest_doctor,
+        cards=cards,
         sources=normalize_sources(sources),
         voice=build_voice_metadata(
             input_type=input_type,
