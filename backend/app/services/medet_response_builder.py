@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.schemas.medet_response import (
+from app.schemas.medet_response import (
     DEFAULT_INPUT_TYPE,
     DEFAULT_LANGUAGE,
     MedetResponse,
     normalize_sources,
 )
-from backend.app.services.emergency_detector import detect_emergency
-from backend.app.services.healthcare_cards import build_healthcare_cards
-from backend.app.services.language_support import get_doctor_suggestion_text
-from backend.app.services.medical_safety_guard import guard_medical_response
-from backend.app.services.voice_support import build_voice_metadata
+from app.services.emergency_detector import detect_emergency
+from app.services.healthcare_cards import build_healthcare_cards
+from app.services.language_support import get_doctor_suggestion_text
+from app.services.medical_safety_guard import guard_medical_response
+from app.services.voice_support import build_voice_metadata
 
 
 def build_medet_response(

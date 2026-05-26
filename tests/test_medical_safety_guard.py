@@ -1,4 +1,4 @@
-from backend.app.services.medical_safety_guard import guard_medical_response
+from app.services.medical_safety_guard import guard_medical_response
 
 
 def test_guard_removes_guaranteed_diagnosis() -> None:

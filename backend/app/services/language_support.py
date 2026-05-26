@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.app.schemas.medet_response import (
+from app.schemas.medet_response import (
     DEFAULT_INPUT_TYPE,
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,

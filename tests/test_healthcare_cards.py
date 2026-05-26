@@ -1,4 +1,4 @@
-from backend.app.services.healthcare_cards import build_healthcare_cards
+from app.services.healthcare_cards import build_healthcare_cards
 
 
 def test_emergency_cards_prioritize_urgent_ui() -> None:

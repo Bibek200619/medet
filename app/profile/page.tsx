@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertCircle,
   Droplets,
@@ -14,58 +14,62 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { AppShell, PageTransition } from "@/components/layout";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/i18n/context";
-
-const familyProfiles = [
-  {
-    id: 1,
-    name: "Lenin Sarmah",
-    relation: "Self",
-    age: 28,
-    bloodGroup: "O+",
-    allergies: "None known",
-    conditions: "Seasonal allergies",
-    medicines: "Vitamin D, ORS when needed",
-    emergencyContact: "+91 90000 44556",
-  },
-  {
-    id: 2,
-    name: "Anita Sarmah",
-    relation: "Mother",
-    age: 56,
-    bloodGroup: "B+",
-    allergies: "Penicillin",
-    conditions: "High blood pressure",
-    medicines: "Amlodipine 5 mg",
-    emergencyContact: "+91 90000 44557",
-  },
-  {
-    id: 3,
-    name: "Rohit Sarmah",
-    relation: "Brother",
-    age: 22,
-    bloodGroup: "A+",
-    allergies: "Dust",
-    conditions: "Asthma history",
-    medicines: "Salbutamol inhaler",
-    emergencyContact: "+91 90000 44558",
-  },
-];
+import { getHealthProfiles, type HealthProfile } from "@/lib/api";
 
 export default function ProfilePage() {
   const { t } = useLanguage();
-  const [activeId, setActiveId] = useState(familyProfiles[0].id);
+  const { session } = useAuth();
+  const [profiles, setProfiles] = useState<HealthProfile[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const activeProfile =
-    familyProfiles.find((profile) => profile.id === activeId) ?? familyProfiles[0];
+    profiles.find((profile) => profile.id === activeId) ?? profiles[0] ?? null;
 
-  const profileDetails = [
-    { label: t("profile.age"), value: `${activeProfile.age}`, icon: User },
-    { label: t("profile.bloodGroup"), value: activeProfile.bloodGroup, icon: Droplets },
-    { label: t("profile.allergies"), value: activeProfile.allergies, icon: AlertCircle },
-    { label: t("profile.medicalConditions"), value: activeProfile.conditions, icon: Shield },
-    { label: t("profile.currentMedicines"), value: activeProfile.medicines, icon: Pill },
-    { label: t("profile.emergencyContacts"), value: activeProfile.emergencyContact, icon: Phone },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfiles() {
+      setIsLoading(true);
+      setErrorMessage("");
+      try {
+        const items = await getHealthProfiles(session);
+        if (!isMounted) return;
+        setProfiles(items);
+        setActiveId(items[0]?.id ?? null);
+      } catch {
+        if (!isMounted) return;
+        setErrorMessage("Could not load health profiles from the backend.");
+        setProfiles([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    void loadProfiles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session]);
+
+  const profileDetails = activeProfile
+    ? [
+        { label: t("profile.age"), value: `${activeProfile.age}`, icon: User },
+        { label: t("profile.bloodGroup"), value: activeProfile.bloodGroup || "Not added", icon: Droplets },
+        { label: t("profile.allergies"), value: activeProfile.allergies.join(", ") || "Not added", icon: AlertCircle },
+        { label: t("profile.medicalConditions"), value: activeProfile.medicalConditions.join(", ") || "Not added", icon: Shield },
+        { label: t("profile.currentMedicines"), value: activeProfile.medicines.join(", ") || "Not added", icon: Pill },
+        {
+          label: t("profile.emergencyContacts"),
+          value: activeProfile.emergencyContacts.map((contact) => contact.phone).join(", ") || "Not added",
+          icon: Phone,
+        },
+      ]
+    : [];
 
   return (
     <AppShell>
@@ -88,7 +92,13 @@ export default function ProfilePage() {
                   </h2>
                 </div>
                 <div className="space-y-2">
-                  {familyProfiles.map((profile) => {
+                  {isLoading &&
+                    Array.from({ length: 2 }).map((_, index) => (
+                      <div key={index} className="rounded-3xl border border-slate-200 bg-white p-3">
+                        <Skeleton className="h-11 w-full rounded-2xl" />
+                      </div>
+                    ))}
+                  {!isLoading && profiles.map((profile) => {
                     const isActive = profile.id === activeId;
                     return (
                       <button
@@ -115,6 +125,11 @@ export default function ProfilePage() {
                       </button>
                     );
                   })}
+                  {!isLoading && profiles.length === 0 && (
+                    <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-medet-text-secondary">
+                      No health profiles found from the backend yet.
+                    </div>
+                  )}
                 </div>
                 <button className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-medet-accent px-4 text-sm font-bold text-white">
                   <Plus className="h-4 w-4" />
@@ -124,7 +139,30 @@ export default function ProfilePage() {
             </aside>
 
             <section className="space-y-5">
-              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+              {errorMessage && (
+                <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+                  {errorMessage}
+                </div>
+              )}
+
+              {isLoading && (
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+                  <Skeleton className="h-20 w-full rounded-3xl" />
+                </div>
+              )}
+
+              {!isLoading && !activeProfile && (
+                <div className="rounded-[2rem] border border-dashed border-slate-200 bg-white p-7 text-center shadow-sm">
+                  <User className="mx-auto h-10 w-10 text-medet-text-secondary" />
+                  <h2 className="mt-4 text-2xl font-bold text-medet-text">No profile data</h2>
+                  <p className="mt-2 text-sm text-medet-text-secondary">
+                    Connect the backend profile store to show family health details here.
+                  </p>
+                </div>
+              )}
+
+              {activeProfile && (
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-4">
                     <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-900 text-white">
@@ -142,8 +180,9 @@ export default function ProfilePage() {
                   </button>
                 </div>
               </div>
+              )}
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              {activeProfile && <div className="grid gap-3 sm:grid-cols-2">
                 {profileDetails.map((detail) => {
                   const Icon = detail.icon;
                   return (
@@ -160,9 +199,9 @@ export default function ProfilePage() {
                     </article>
                   );
                 })}
-              </div>
+              </div>}
 
-              <div className="grid gap-5 lg:grid-cols-2">
+              {activeProfile && <div className="grid gap-5 lg:grid-cols-2">
                 <section className="rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-sm sm:p-6">
                   <HeartHandshake className="h-7 w-7 text-medet-secondary" />
                   <h2 className="mt-4 text-xl font-bold text-medet-text">Care notes for family</h2>
@@ -175,15 +214,17 @@ export default function ProfilePage() {
                 <section className="rounded-[2rem] border border-red-100 bg-red-50 p-5 shadow-sm sm:p-6">
                   <Phone className="h-7 w-7 text-medet-emergency" />
                   <h2 className="mt-4 text-xl font-bold text-red-950">{t("profile.emergencyContacts")}</h2>
-                  <p className="mt-2 text-sm text-red-900">{activeProfile.emergencyContact}</p>
+                  <p className="mt-2 text-sm text-red-900">
+                    {activeProfile.emergencyContacts[0]?.phone || "No emergency contact added"}
+                  </p>
                   <Link
-                    href={`tel:${activeProfile.emergencyContact}`}
+                    href={`tel:${activeProfile.emergencyContacts[0]?.phone || "112"}`}
                     className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-medet-emergency text-sm font-bold text-white"
                   >
                     {t("emergency.callEmergency")}
                   </Link>
                 </section>
-              </div>
+              </div>}
             </section>
           </div>
         </main>

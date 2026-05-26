@@ -6,8 +6,6 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const SESSION_STORAGE_KEY = "medet-session";
-const PROFILES_STORAGE_KEY = "medet-health-profiles";
-const REMINDERS_STORAGE_KEY = "medet-medicine-reminders";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -16,7 +14,7 @@ export interface AuthUser {
   name: string;
   phone?: string;
   email?: string;
-  provider: "phone" | "google" | "guest";
+  provider: "phone" | "google";
 }
 
 export interface AuthSession {
@@ -92,11 +90,65 @@ export interface VoiceTranscription {
   confidence?: number;
 }
 
-export function isEmergencyText(text: string) {
-  return /chest pain|breathing|breath|unconscious|stroke|bleeding|seizure|poison|burn|heart/i.test(
-    text
-  );
+export type MedetInputType = "text" | "voice";
+export type MedetSeverity = "low" | "medium" | "high";
+export type MedetTrustLevel = "safe" | "guarded";
+export type MedetCardType =
+  | "emergency"
+  | "action"
+  | "hydration"
+  | "medication"
+  | "doctor_visit"
+  | "symptom_warning"
+  | "nutrition"
+  | "followup";
+
+export interface MedetCard {
+  type: MedetCardType;
+  title: string;
+  content: string;
 }
+
+export interface MedetSource {
+  title?: string | null;
+  url?: string | null;
+  snippet?: string | null;
+  source_type?: string;
+}
+
+export interface MedetVoiceMetadata {
+  interaction_mode: string;
+  speech_to_text_status: string;
+  transcript?: string | null;
+  transcript_language?: string | null;
+  voice_locale?: string | null;
+  tts_text?: string | null;
+  audio_status: string;
+  audio_url?: string | null;
+}
+
+export interface MedetChatResponse {
+  response: string;
+  input_type: MedetInputType;
+  language: string;
+  emergency: boolean;
+  severity: MedetSeverity;
+  reason: string | null;
+  medical_warning: boolean;
+  trust_level: MedetTrustLevel;
+  suggest_doctor: boolean;
+  cards: MedetCard[];
+  sources: MedetSource[];
+  conversation_id: string;
+  voice?: MedetVoiceMetadata | null;
+}
+
+export type MedetStreamEvent =
+  | { type: "token"; content: string; conversation_id?: string; language?: string; input_type?: MedetInputType }
+  | { type: "source"; source: MedetSource; conversation_id?: string; language?: string; input_type?: MedetInputType }
+  | { type: "metadata"; metadata: MedetChatResponse }
+  | { type: "done"; conversation_id?: string }
+  | { type: "error"; message: string; retryable: boolean; code?: string };
 
 function nowIso() {
   return new Date().toISOString();
@@ -168,23 +220,6 @@ export function saveSession(session: AuthSession | null) {
   window.dispatchEvent(new Event("medet-session-change"));
 }
 
-function createLocalSession(input: AuthInput, provider: AuthUser["provider"]): AuthSession {
-  const phoneTail = input.phone?.replace(/\D/g, "").slice(-4);
-  const user: AuthUser = {
-    id: localId("user"),
-    name: input.name || (provider === "guest" ? "Guest User" : "MEDET User"),
-    phone: input.phone,
-    email: input.email,
-    provider,
-  };
-
-  return {
-    user,
-    accessToken: `local-${provider}-${phoneTail || "session"}`,
-    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-  };
-}
-
 export async function getCurrentSession() {
   const stored = getStoredSession();
   if (!stored) return null;
@@ -196,46 +231,30 @@ export async function getCurrentSession() {
     saveSession(session);
     return session;
   } catch {
-    return stored;
+    saveSession(null);
+    return null;
   }
 }
 
 export async function signInWithPhone(input: AuthInput) {
-  try {
-    const session = await apiFetch<AuthSession>("/auth/phone", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-    saveSession(session);
-    return session;
-  } catch {
-    const session = createLocalSession(input, "phone");
-    saveSession(session);
-    return session;
-  }
+  const session = await apiFetch<AuthSession>("/auth/phone", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  saveSession(session);
+  return session;
 }
 
 export async function signInWithGoogle() {
-  try {
-    const session = await apiFetch<AuthSession>("/auth/google/session", {
-      method: "POST",
-    });
-    saveSession(session);
-    return session;
-  } catch {
-    const session = createLocalSession(
-      { name: "Google User", email: "google.user@medet.local" },
-      "google"
-    );
-    saveSession(session);
-    return session;
-  }
+  const session = await apiFetch<AuthSession>("/auth/google/session", {
+    method: "POST",
+  });
+  saveSession(session);
+  return session;
 }
 
 export function continueAsGuest() {
-  const session = createLocalSession({ name: "Guest User" }, "guest");
-  saveSession(session);
-  return session;
+  saveSession(null);
 }
 
 export async function signOut() {
@@ -248,47 +267,203 @@ export async function signOut() {
       });
     }
   } catch {
-    // Local fallback still signs out.
+    // Sign out locally even when the backend session endpoint is unavailable.
   } finally {
     saveSession(null);
   }
 }
 
-function normalizeChatChunk(raw: string) {
-  return raw
-    .split("\n")
-    .map((line) => line.replace(/^data:\s?/, "").trim())
-    .filter((line) => line && line !== "[DONE]")
-    .map((line) => {
-      try {
-        const parsed = JSON.parse(line) as JsonRecord;
-        return String(parsed.delta ?? parsed.content ?? parsed.message ?? "");
-      } catch {
-        return line;
-      }
-    })
-    .join("");
+function toBackendLanguage(language: Language) {
+  return language === "mr" ? "hi" : language;
 }
 
-async function* fallbackChatStream(message: string): AsyncGenerator<string> {
-  const emergency = isEmergencyText(message);
-  const reply = emergency
-    ? "This may need urgent medical care. Please call emergency services or go to the nearest hospital now. If possible, ask a family member or neighbor to stay with you while you get help."
-    : "I hear you. I can guide you with simple next steps, but I will not diagnose you. How long has this been happening, and do you have fever, severe pain, dizziness, or trouble breathing?";
+function parseSseEvents(buffer: string, flush = false) {
+  const events: Array<{ event: string; data: string }> = [];
+  const frames = buffer.replace(/\r\n/g, "\n").split("\n\n");
+  const remaining = flush ? "" : (frames.pop() ?? "");
 
-  for (const word of reply.split(" ")) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    yield `${word} `;
+  for (const frame of frames) {
+    if (!frame.trim()) continue;
+
+    let event = "message";
+    const dataLines: string[] = [];
+
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) {
+        event = line.slice("event:".length).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice("data:".length).trim());
+      }
+    }
+
+    if (dataLines.length) {
+      events.push({ event, data: dataLines.join("\n") });
+    }
+  }
+
+  return { events, remaining };
+}
+
+function normalizeMedetStreamEvents(eventName: string, rawData: string): MedetStreamEvent[] {
+  try {
+    const parsed = JSON.parse(rawData) as JsonRecord;
+    const parsedType = readString(parsed.type);
+
+    if (eventName === "metadata" || parsedType === "metadata") {
+      return [
+        {
+          type: "metadata",
+          metadata: coerceMedetChatResponse((parsed.metadata as JsonRecord | undefined) ?? parsed),
+        },
+      ];
+    }
+    if (isMedetChatResponseRecord(parsed)) {
+      return [{ type: "metadata", metadata: coerceMedetChatResponse(parsed) }];
+    }
+
+    if (eventName === "source" || parsedType === "source" || parsedType === "sources") {
+      const sourceList = Array.isArray(parsed.sources)
+        ? parsed.sources
+        : [parsed.source ?? parsed];
+      return sourceList
+        .filter((source): source is JsonRecord => Boolean(source) && typeof source === "object")
+        .map((source) => ({ type: "source", source: coerceMedetSource(source) }));
+    }
+
+    if (eventName === "error" || parsedType === "error") {
+      const error = parsed.error as JsonRecord | undefined;
+      return [
+        {
+          type: "error",
+          message: readString(error?.message) || readString(parsed.detail) || readString(parsed.message) || "Medet could not complete the response.",
+          retryable: Boolean(error?.retryable ?? parsed.retryable ?? true),
+          code: readString(error?.code) || readString(parsed.code) || undefined,
+        },
+      ];
+    }
+
+    if (parsedType === "done") {
+      return [
+        {
+          type: "done",
+          conversation_id: readString(parsed.conversation_id) || undefined,
+        },
+      ];
+    }
+
+    return [
+      {
+        type: "token",
+        content:
+          readString(parsed.content) ||
+          readString(parsed.text) ||
+          readString(parsed.delta) ||
+          readString(parsed.message) ||
+          readString(parsed.response),
+        conversation_id: readString(parsed.conversation_id) || undefined,
+        language: readString(parsed.language) || undefined,
+        input_type: parsed.input_type === "voice" ? "voice" : "text",
+      },
+    ];
+  } catch {
+    return rawData ? [{ type: "token", content: rawData }] : [];
   }
 }
 
-export async function* streamChatMessage(
+function readString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function isMedetChatResponseRecord(value: JsonRecord) {
+  return typeof value.response === "string" && ("emergency" in value || "cards" in value);
+}
+
+function coerceMedetChatResponse(value: JsonRecord): MedetChatResponse {
+  return {
+    response: readString(value.response) || readString(value.message),
+    input_type: value.input_type === "voice" ? "voice" : "text",
+    language: readString(value.language) || "en",
+    emergency: Boolean(value.emergency),
+    severity: value.severity === "medium" || value.severity === "high" ? value.severity : "low",
+    reason: readString(value.reason) || null,
+    medical_warning: Boolean(value.medical_warning),
+    trust_level: value.trust_level === "guarded" ? "guarded" : "safe",
+    suggest_doctor: Boolean(value.suggest_doctor),
+    cards: Array.isArray(value.cards)
+      ? value.cards
+          .map(coerceMedetCard)
+          .filter((card): card is MedetCard => Boolean(card))
+      : [],
+    sources: Array.isArray(value.sources) ? value.sources.map(coerceMedetSource) : [],
+    conversation_id: readString(value.conversation_id) || localId("conversation"),
+    voice: (value.voice as MedetVoiceMetadata | null | undefined) ?? null,
+  };
+}
+
+function coerceMedetCard(value: unknown): MedetCard | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as JsonRecord;
+  const type = readString(record.type);
+  if (!isMedetCardType(type)) return null;
+  return {
+    type,
+    title: readString(record.title),
+    content: readString(record.content),
+  };
+}
+
+function isMedetCardType(value: string): value is MedetCardType {
+  return [
+    "emergency",
+    "action",
+    "hydration",
+    "medication",
+    "doctor_visit",
+    "symptom_warning",
+    "nutrition",
+    "followup",
+  ].includes(value);
+}
+
+function coerceMedetSource(value: unknown): MedetSource {
+  if (!value || typeof value !== "object") {
+    return { title: readString(value), snippet: readString(value), source_type: "tavily" };
+  }
+  const record = value as JsonRecord;
+  return {
+    title: readString(record.title) || readString(record.name) || null,
+    url: readString(record.url) || readString(record.link) || null,
+    snippet: readString(record.snippet) || readString(record.content) || readString(record.description) || null,
+    source_type: readString(record.source_type) || "tavily",
+  };
+}
+
+export async function sendMedetChat(
   message: string,
   language: Language,
-  session: AuthSession | null
-): AsyncGenerator<string> {
+  session: AuthSession | null,
+  options: { inputType?: MedetInputType; conversationId?: string } = {}
+): Promise<MedetChatResponse> {
+  return apiFetch<MedetChatResponse>("/medet/chat", {
+    method: "POST",
+    token: session?.accessToken,
+    body: JSON.stringify({
+      message,
+      language: toBackendLanguage(language),
+      input_type: options.inputType ?? "text",
+      conversation_id: options.conversationId,
+    }),
+  });
+}
+
+export async function* streamMedetChat(
+  message: string,
+  language: Language,
+  session: AuthSession | null,
+  options: { inputType?: MedetInputType; conversationId?: string } = {}
+): AsyncGenerator<MedetStreamEvent> {
   try {
-    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+    const response = await fetch(`${API_BASE_URL}/medet/chat/stream`, {
       method: "POST",
       headers: {
         Accept: "text/event-stream",
@@ -297,161 +472,120 @@ export async function* streamChatMessage(
           ? { Authorization: `Bearer ${session.accessToken}` }
           : {}),
       },
-      body: JSON.stringify({ message, language, sessionId: session?.user.id }),
+      body: JSON.stringify({
+        message,
+        language: toBackendLanguage(language),
+        input_type: options.inputType ?? "text",
+        conversation_id: options.conversationId,
+      }),
     });
 
     if (!response.ok || !response.body) {
-      throw new Error("Streaming response unavailable");
+      const fallback = await sendMedetChat(message, language, session, options);
+      yield { type: "metadata", metadata: fallback };
+      return;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const metadata = coerceMedetChatResponse((await response.json()) as JsonRecord);
+      yield { type: "metadata", metadata };
+      return;
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
+    let emittedEvent = false;
 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      const chunk = normalizeChatChunk(decoder.decode(value, { stream: true }));
-      if (chunk) yield chunk;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parsed = parseSseEvents(buffer);
+      buffer = parsed.remaining;
+
+      for (const item of parsed.events) {
+        for (const event of normalizeMedetStreamEvents(item.event, item.data)) {
+          emittedEvent = true;
+          yield event;
+        }
+      }
     }
-  } catch {
-    yield* fallbackChatStream(message);
+
+    const flushed = parseSseEvents(buffer, true);
+    for (const item of flushed.events) {
+      for (const event of normalizeMedetStreamEvents(item.event, item.data)) {
+        emittedEvent = true;
+        yield event;
+      }
+    }
+
+    if (!emittedEvent) {
+      const fallback = await sendMedetChat(message, language, session, options);
+      yield { type: "metadata", metadata: fallback };
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "";
+    const frontendSafeMessage =
+      detail && !/(failed to fetch|load failed|network|streaming response unavailable)/i.test(detail)
+        ? detail
+        : "Medet backend is unavailable. Please check the connection and try again.";
+
+    yield {
+      type: "error",
+      message: frontendSafeMessage,
+      retryable: true,
+      code: "frontend_fetch_failed",
+    };
   }
 }
 
-const seedProfiles: HealthProfile[] = [
-  {
-    id: "profile-self",
-    name: "Lenin Sarmah",
-    relation: "Self",
-    age: 28,
-    bloodGroup: "O+",
-    allergies: ["None known"],
-    medicalConditions: ["Seasonal allergies"],
-    medicines: ["Vitamin D", "ORS when needed"],
-    emergencyContacts: [
-      { name: "Family Contact", relation: "Family", phone: "+91 90000 44556" },
-    ],
-  },
-  {
-    id: "profile-mother",
-    name: "Anita Sarmah",
-    relation: "Mother",
-    age: 56,
-    bloodGroup: "B+",
-    allergies: ["Penicillin"],
-    medicalConditions: ["High blood pressure"],
-    medicines: ["Amlodipine 5 mg"],
-    emergencyContacts: [
-      { name: "Family Contact", relation: "Family", phone: "+91 90000 44557" },
-    ],
-  },
-];
-
-const seedReminders: MedicineReminder[] = [
-  {
-    id: "reminder-paracetamol",
-    medicineName: "Paracetamol",
-    dosage: "500 mg after food",
-    time: "8:00 AM",
-    period: "morning",
-    status: "taken",
-  },
-  {
-    id: "reminder-ors",
-    medicineName: "ORS solution",
-    dosage: "1 glass slowly",
-    time: "1:00 PM",
-    period: "afternoon",
-    status: "pending",
-  },
-  {
-    id: "reminder-iron",
-    medicineName: "Iron tablet",
-    dosage: "1 tablet after dinner",
-    time: "8:30 PM",
-    period: "night",
-    status: "pending",
-  },
-];
+export async function* streamChatMessage(
+  message: string,
+  language: Language,
+  session: AuthSession | null
+): AsyncGenerator<string> {
+  for await (const event of streamMedetChat(message, language, session)) {
+    if (event.type === "token") {
+      yield event.content;
+    }
+  }
+}
 
 export async function getHealthProfiles(session: AuthSession | null) {
-  try {
-    const profiles = await apiFetch<HealthProfile[]>("/profiles", {
-      token: session?.accessToken,
-    });
-    writeStorage(PROFILES_STORAGE_KEY, profiles);
-    return profiles;
-  } catch {
-    return readStorage<HealthProfile[]>(PROFILES_STORAGE_KEY, seedProfiles);
-  }
+  return apiFetch<HealthProfile[]>("/profiles", {
+    token: session?.accessToken,
+  });
 }
 
 export async function saveHealthProfile(
   profile: HealthProfile,
   session: AuthSession | null
 ) {
-  try {
-    const saved = await apiFetch<HealthProfile>(`/profiles/${profile.id}`, {
-      method: "PUT",
-      body: JSON.stringify(profile),
-      token: session?.accessToken,
-    });
-    const current = await getHealthProfiles(session);
-    const next = current.map((item) => (item.id === saved.id ? saved : item));
-    writeStorage(PROFILES_STORAGE_KEY, next);
-    return saved;
-  } catch {
-    const current = readStorage<HealthProfile[]>(PROFILES_STORAGE_KEY, seedProfiles);
-    const exists = current.some((item) => item.id === profile.id);
-    const next = exists
-      ? current.map((item) => (item.id === profile.id ? profile : item))
-      : [...current, profile];
-    writeStorage(PROFILES_STORAGE_KEY, next);
-    return profile;
-  }
+  return apiFetch<HealthProfile>(`/profiles/${profile.id}`, {
+    method: "PUT",
+    body: JSON.stringify(profile),
+    token: session?.accessToken,
+  });
 }
 
 export async function getReminders(session: AuthSession | null) {
-  try {
-    const reminders = await apiFetch<MedicineReminder[]>("/reminders", {
-      token: session?.accessToken,
-    });
-    writeStorage(REMINDERS_STORAGE_KEY, reminders);
-    return reminders;
-  } catch {
-    return readStorage<MedicineReminder[]>(REMINDERS_STORAGE_KEY, seedReminders);
-  }
+  return apiFetch<MedicineReminder[]>("/reminders", {
+    token: session?.accessToken,
+  });
 }
 
 export async function saveReminder(
   reminder: MedicineReminder,
   session: AuthSession | null
 ) {
-  try {
-    const saved = await apiFetch<MedicineReminder>(`/reminders/${reminder.id}`, {
-      method: "PUT",
-      body: JSON.stringify(reminder),
-      token: session?.accessToken,
-    });
-    const current = await getReminders(session);
-    const exists = current.some((item) => item.id === saved.id);
-    const next = exists
-      ? current.map((item) => (item.id === saved.id ? saved : item))
-      : [...current, saved];
-    writeStorage(REMINDERS_STORAGE_KEY, next);
-    return saved;
-  } catch {
-    const current = readStorage<MedicineReminder[]>(
-      REMINDERS_STORAGE_KEY,
-      seedReminders
-    );
-    const exists = current.some((item) => item.id === reminder.id);
-    const next = exists
-      ? current.map((item) => (item.id === reminder.id ? reminder : item))
-      : [...current, reminder];
-    writeStorage(REMINDERS_STORAGE_KEY, next);
-    return reminder;
-  }
+  return apiFetch<MedicineReminder>(`/reminders/${reminder.id}`, {
+    method: "PUT",
+    body: JSON.stringify(reminder),
+    token: session?.accessToken,
+  });
 }
 
 export function createReminderDraft(
@@ -482,15 +616,11 @@ export async function transcribeAudio(
   formData.append("audio", audio, "voice.webm");
   formData.append("language", language);
 
-  try {
-    return await apiFetch<VoiceTranscription>("/voice/stt", {
-      method: "POST",
-      body: formData,
-      token: session?.accessToken,
-    });
-  } catch {
-    return { transcript: "", confidence: 0 };
-  }
+  return apiFetch<VoiceTranscription>("/voice/stt", {
+    method: "POST",
+    body: formData,
+    token: session?.accessToken,
+  });
 }
 
 export async function synthesizeSpeech(
@@ -498,23 +628,19 @@ export async function synthesizeSpeech(
   language: Language,
   session: AuthSession | null
 ) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/voice/tts`, {
-      method: "POST",
-      headers: {
-        Accept: "audio/mpeg",
-        "Content-Type": "application/json",
-        ...(session?.accessToken
-          ? { Authorization: `Bearer ${session.accessToken}` }
-          : {}),
-      },
-      body: JSON.stringify({ text, language }),
-    });
-    if (!response.ok) throw new Error("TTS unavailable");
-    return await response.blob();
-  } catch {
-    return null;
-  }
+  const response = await fetch(`${API_BASE_URL}/voice/tts`, {
+    method: "POST",
+    headers: {
+      Accept: "audio/mpeg",
+      "Content-Type": "application/json",
+      ...(session?.accessToken
+        ? { Authorization: `Bearer ${session.accessToken}` }
+        : {}),
+    },
+    body: JSON.stringify({ text, language }),
+  });
+  if (!response.ok) throw new Error("TTS unavailable");
+  return response.blob();
 }
 
 export function speakWithBrowser(text: string, language: Language) {
@@ -538,49 +664,6 @@ export function speakWithBrowser(text: string, language: Language) {
   return true;
 }
 
-const seedClinics: NearbyClinic[] = [
-  {
-    id: "clinic-rural-family",
-    name: "Rural Family Clinic",
-    type: "clinic",
-    distance: "1.2 km",
-    travelTime: "12 min",
-    address: "Village market road",
-    phone: "+91 90000 12001",
-    isOpen: true,
-  },
-  {
-    id: "hospital-district",
-    name: "District Civil Hospital",
-    type: "hospital",
-    distance: "2.4 km",
-    travelTime: "18 min",
-    address: "District center",
-    phone: "+91 90000 12002",
-    isOpen: true,
-  },
-  {
-    id: "health-primary",
-    name: "Primary Health Centre",
-    type: "health_center",
-    distance: "3.1 km",
-    travelTime: "22 min",
-    address: "Block health campus",
-    phone: "+91 90000 12003",
-    isOpen: true,
-  },
-  {
-    id: "pharmacy-jan-aushadhi",
-    name: "Jan Aushadhi Pharmacy",
-    type: "pharmacy",
-    distance: "800 m",
-    travelTime: "8 min",
-    address: "Near bus stand",
-    phone: "+91 90000 12004",
-    isOpen: false,
-  },
-];
-
 export function getBrowserLocation(): Promise<LocationPoint> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -600,19 +683,15 @@ export function getBrowserLocation(): Promise<LocationPoint> {
 }
 
 export async function getNearbyClinics(location: LocationPoint | null) {
-  if (!location) return seedClinics;
-  try {
-    return await apiFetch<NearbyClinic[]>(
-      `/clinics?lat=${location.latitude}&lng=${location.longitude}`
-    );
-  } catch {
-    return seedClinics;
-  }
+  const query = location
+    ? `?lat=${location.latitude}&lng=${location.longitude}`
+    : "";
+  return apiFetch<NearbyClinic[]>(`/clinics${query}`);
 }
 
 export function getIntegrationModeLabel() {
   return API_BASE_URL.includes("localhost")
-    ? "Local fallback + API-ready"
+    ? "Connected to local backend"
     : "Connected to backend";
 }
 

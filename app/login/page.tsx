@@ -15,22 +15,35 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "ready">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
   const isSignup = mode === "signup";
 
   async function handlePhoneSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("loading");
-    await signInPhone({ name: name || undefined, phone });
-    setStatus("ready");
-    router.push("/chat");
+    setErrorMessage("");
+    try {
+      await signInPhone({ name: name || undefined, phone });
+      setStatus("ready");
+      router.push("/chat");
+    } catch {
+      setStatus("error");
+      setErrorMessage("Sign-in service is not available. You can continue without an account.");
+    }
   }
 
   async function handleGoogle() {
     setStatus("loading");
-    await signInGoogle();
-    setStatus("ready");
-    router.push("/chat");
+    setErrorMessage("");
+    try {
+      await signInGoogle();
+      setStatus("ready");
+      router.push("/chat");
+    } catch {
+      setStatus("error");
+      setErrorMessage("Google sign-in is not connected yet. You can continue without an account.");
+    }
   }
 
   function handleGuest() {
@@ -64,7 +77,7 @@ export default function LoginPage() {
             </h1>
             <p className="mt-4 text-lg leading-relaxed text-medet-text-secondary">
               Sign in to keep family health profiles, reminders, and consultations together.
-              You can also continue as a guest for quick help.
+              You can also continue without an account for quick help.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               {["Multilingual", "Voice-first", "Low bandwidth"].map((item) => (
@@ -122,6 +135,12 @@ export default function LoginPage() {
               {t("landing.continueWithGoogle")}
             </button>
 
+            {errorMessage && (
+              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                {errorMessage}
+              </div>
+            )}
+
             <div className="my-5 flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-medet-text-secondary">
               <span className="h-px flex-1 bg-slate-200" />
               or
@@ -173,7 +192,7 @@ export default function LoginPage() {
               onClick={handleGuest}
               className="mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-medet-secondary-light text-sm font-bold text-medet-secondary"
             >
-              Continue as guest
+              Continue without account
             </button>
 
             {session && (
