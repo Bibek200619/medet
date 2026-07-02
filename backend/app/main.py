@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.errors import MedetAPIError, MedetErrorCode
+from app.routes.auth import router as auth_router
 from app.routes.frontend_data import router as frontend_data_router
 from app.routes.medet import router as medet_router
 from app.schemas.medet_response import MedetErrorDetail, MedetErrorResponse
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 app.include_router(medet_router)
 app.include_router(frontend_data_router)
+app.include_router(auth_router)
 
 
 @app.exception_handler(MedetAPIError)
