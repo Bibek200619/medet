@@ -2,15 +2,32 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.app.core.errors import MedetAPIError, MedetErrorCode
-from backend.app.routes.medet import router as medet_router
-from backend.app.schemas.medet_response import MedetErrorDetail, MedetErrorResponse
+from app.core.errors import MedetAPIError, MedetErrorCode
+from app.routes.auth import router as auth_router
+from app.routes.frontend_data import router as frontend_data_router
+from app.routes.medet import router as medet_router
+from app.schemas.medet_response import MedetErrorDetail, MedetErrorResponse
 
 
 app = FastAPI(title="Medet Backend")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(medet_router)
+app.include_router(frontend_data_router)
+app.include_router(auth_router)
 
 
 @app.exception_handler(MedetAPIError)

@@ -2,8 +2,8 @@ import json
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
-from backend.app.routes import medet
+from app.main import app
+from app.routes import medet
 
 
 client = TestClient(app)

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from backend.app.schemas.medet_response import (
+from app.schemas.medet_response import (
     DEFAULT_INPUT_TYPE,
     MedetVoiceMetadata,
 )
-from backend.app.services.language_support import get_language_profile
+from app.services.language_support import get_language_profile
 
 
 VOICE_INPUT_TYPE = "voice"
