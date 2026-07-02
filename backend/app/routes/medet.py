@@ -8,18 +8,18 @@ from uuid import uuid4
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from backend.app.core.errors import MedetAPIError, MedetErrorCode
-from backend.app.schemas.medet_response import (
+from app.core.errors import MedetAPIError, MedetErrorCode
+from app.schemas.medet_response import (
     MedetChatRequest,
     MedetErrorResponse,
     MedetResponse,
     normalize_sources,
 )
-from backend.app.services.language_support import (
-    build_multilingual_prompt_context,
-    get_followup_text,
+from app.services.medet_ai_provider import (
+    generate_medet_ai_response,
+    stream_medet_ai_response,
 )
-from backend.app.services.medet_response_builder import build_medet_response
+from app.services.medet_response_builder import build_medet_response
 
 router = APIRouter(prefix="/medet", tags=["medet"])
 
@@ -38,9 +38,9 @@ async def medet_chat(payload: MedetChatRequest) -> MedetResponse:
     """
     Non-streaming Medet response.
 
-    Replace `_generate_ai_response` with the existing Omnix/Ollama/Tavily service
-    call in the host app. The response builder is the healthcare-safe integration
-    point and should stay independent from retrieval or model providers.
+    The AI provider handles Ollama/Tavily access and returns plain answer text
+    plus normalized source candidates. The response builder remains the single
+    healthcare-safe metadata layer for frontend cards and escalation state.
     """
     conversation_id = _conversation_id(payload)
     try:
@@ -183,23 +183,13 @@ async def _generate_ai_response(
     language: str,
     conversation_id: str,
 ) -> tuple[str, list[dict[str, str] | str]]:
-    """
-    Thin placeholder for existing Tavily/Ollama orchestration.
-
-    In the full app, call the current Medet/Omnix generation service here and
-    return `(answer_text, sources)`.
-    """
     del conversation_id
-    prompt_context = build_multilingual_prompt_context(
+    generation = await generate_medet_ai_response(
         message=message,
-        language=language,
         input_type=input_type,
+        language=language,
     )
-
-    # Existing Omnix/Ollama integration should pass `prompt_context.system_instruction`
-    # with `prompt_context.user_message` and keep returning `(answer_text, sources)`.
-    del prompt_context
-    return (get_followup_text(language), [])
+    return (generation.content, generation.sources)
 
 
 async def _stream_ai_response(
@@ -208,17 +198,13 @@ async def _stream_ai_response(
     language: str,
     conversation_id: str,
 ) -> AsyncIterator[dict[str, object]]:
-    """Placeholder adapter for the existing streaming generator."""
-    answer, sources = await _generate_ai_response(
-        message,
-        input_type,
-        language,
-        conversation_id,
-    )
-    for source in sources:
-        yield {"type": "source", "source": source}
-    for token in answer.split(" "):
-        yield {"type": "token", "content": token + " "}
+    del conversation_id
+    async for event in stream_medet_ai_response(
+        message=message,
+        input_type=input_type,
+        language=language,
+    ):
+        yield event
 
 
 def _conversation_id(payload: MedetChatRequest) -> str:

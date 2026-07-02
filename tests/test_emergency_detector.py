@@ -1,4 +1,4 @@
-from backend.app.services.emergency_detector import detect_emergency
+from app.services.emergency_detector import detect_emergency
 
 
 def test_detects_breathing_difficulty() -> None:

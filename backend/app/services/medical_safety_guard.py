@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from backend.app.schemas.medet_response import DEFAULT_LANGUAGE
-from backend.app.services.language_support import (
+from app.schemas.medet_response import DEFAULT_LANGUAGE
+from app.services.language_support import (
     get_doctor_suggestion_text,
     get_emergency_escalation_text,
 )
@@ -128,6 +128,16 @@ UNCERTAINTY_TEXT: dict[str, str] = {
 }
 
 
+EMERGENCY_CORE_PHRASES: dict[str, tuple[str, ...]] = {
+    "en": ("medical help immediately", "urgent attention"),
+    "hi": ("गंभीर हो सकता है", "तुरंत"),
+    "bn": ("গুরুতর হতে পারে", "দ্রুত"),
+    "ne": ("गम्भीर हुन सक्छ", "तुरुन्त"),
+    "ta": ("தீவிரமாக இருக்கலாம்", "உடனடி"),
+    "kn": ("ಗಂಭೀರವಾಗಿರಬಹುದು", "ತಕ್ಷಣ"),
+}
+
+
 def guard_medical_response(
     response: str,
     *,
@@ -171,7 +181,7 @@ def guard_medical_response(
         suggest_doctor = True
 
     if emergency:
-        final_response = _append_once(final_response, get_emergency_escalation_text(language))
+        final_response = _append_emergency_once(final_response, language)
         suggest_doctor = True
 
     if suggest_doctor and not emergency:
@@ -213,6 +223,15 @@ def _fallback(language: str, emergency: bool) -> str:
     if emergency:
         return get_emergency_escalation_text(language)
     return _localized(SAFE_FALLBACK_TEXT, language)
+
+
+def _append_emergency_once(text: str, language: str) -> str:
+    addition = get_emergency_escalation_text(language)
+    normalized = text.lower()
+    for phrase in EMERGENCY_CORE_PHRASES.get(language, EMERGENCY_CORE_PHRASES[DEFAULT_LANGUAGE]):
+        if phrase.lower() in normalized:
+            return text
+    return _append_once(text, addition)
 
 
 def _localized(options: dict[str, str], language: str) -> str:

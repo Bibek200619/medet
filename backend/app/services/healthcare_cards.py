@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 
-from backend.app.schemas.medet_response import DEFAULT_LANGUAGE, MedetCard
-from backend.app.services.language_support import get_language_profile
+from app.schemas.medet_response import DEFAULT_LANGUAGE, MedetCard
+from app.services.language_support import get_language_profile
 
 
 MAX_CARDS = 5
